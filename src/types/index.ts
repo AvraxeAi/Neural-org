@@ -30,6 +30,23 @@ export type OrgMember = {
   title?: string;
 };
 
+export type OrgNodePermission = 'owner' | 'admin' | 'member' | 'guest';
+export type OrgNodeProvider = 'anthropic' | 'openai' | 'google' | 'local';
+
+export type OrgNode = {
+  id: string;
+  name: string;
+  title: string;
+  model: string | null;
+  agentName: string | null;
+  provider: OrgNodeProvider | null;
+  initial: string;
+  color: string;
+  status: 'online' | 'busy' | 'offline';
+  parentId: string | null;
+  permissionType: OrgNodePermission;
+};
+
 export type Project = {
   id: string;
   title: string;

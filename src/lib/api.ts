@@ -1,5 +1,34 @@
 import { appConfig, hasApiBaseUrl } from './config';
 
+export type ProviderStatus = 'connected' | 'disconnected' | 'connecting';
+
+export type ProviderUsage = {
+  provider: 'openai' | 'claude';
+  displayName: string;
+  status: ProviderStatus;
+  accountLabel?: string;
+  usedPercent?: number;
+  limitText?: string;
+  resetDate?: string;
+};
+
+export const DEFAULT_PROVIDER_USAGE: ProviderUsage[] = [
+  { provider: 'openai', displayName: 'Codex / OpenAI', status: 'disconnected' },
+  { provider: 'claude', displayName: 'Claude (Anthropic)', status: 'disconnected' },
+];
+
+export async function fetchProviderUsage(): Promise<ProviderUsage[]> {
+  if (!hasApiBaseUrl) return DEFAULT_PROVIDER_USAGE;
+  try {
+    const data = await request<{ providers: ProviderUsage[] }>('/providers/usage');
+    return Array.isArray(data.providers) && data.providers.length > 0
+      ? data.providers
+      : DEFAULT_PROVIDER_USAGE;
+  } catch {
+    return DEFAULT_PROVIDER_USAGE;
+  }
+}
+
 export type GatewaySummary = {
   ok: boolean;
   source: 'live' | 'demo';

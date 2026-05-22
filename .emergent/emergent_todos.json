@@ -1,14 +1,10 @@
 [
   {
-    "content": "Phase 2: Backend - Full API (auth, orgs, users, agents, board, workflows, messaging)",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 2: Frontend - Full UI (org chart, workflow builder, board, messaging, agents)",
-    "status": "completed"
-  },
-  {
     "content": "Phase 2: End-to-end testing with testing agent",
-    "status": "in_progress"
+    "status": "completed"
+  },
+  {
+    "content": "Phase 2: All user stories covered - Dashboard, Org Chart, Agents, Board, Workflows, Messages, Settings",
+    "status": "completed"
   }
 ]

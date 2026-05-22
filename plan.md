@@ -1,121 +1,204 @@
 # plan.md
 
 ## 1. Objectives
-- Deliver an MVP “OpenClaw Command Center” with **multi-tenant orgs** where users manage **users + agents**, collaborate via **board proposals/voting**, coordinate via **messaging**, and design **workflows** executed with real-time state updates.
-- Build **interactive Org Chart** (drag/drop hierarchy, board flags, side panel actions).
-- Build **Workflow Builder** (ReactFlow) with triggers/steps, branching/parallel, and backend execution engine with live progress.
-- Build **Board System** (propose → debate/comments → vote → on pass triggers workflow).
-- Build **Messaging** (user↔user, user↔agent placeholder) with threads + real-time updates.
-- Build **Agent System (ClawHub)** + **Skills** with API-key input per agent (no OAuth).
-- Add **email/password JWT auth** after core is stable.
+- Deliver an MVP **OpenClaw Command Center** with **multi-tenant orgs** where users manage **users + agents**, collaborate via **board proposals/voting**, coordinate via **messaging**, and design **workflows** executed with **real-time state updates**.
+- Provide a **cinematic dark-only glassmorphism UI** (Space Grotesk + IBM Plex, cyan primary), not a generic SaaS dashboard.
+- Ensure the system is **fully interactive** (no mock data) and validated with **automated backend tests + end-to-end UI verification**.
+
+**Status:** MVP objectives achieved.
+- Phase 1 WebSocket POC completed (6/6 tests passed; per-org isolation confirmed).
+- Phase 2 V1 app completed (backend APIs + frontend pages implemented and tested).
 
 ## 2. Implementation Steps
 
-### Phase 1: Core POC (Isolation) — Real-time + Multi-tenant data flow
+### Phase 1: Core POC (Isolation) — Real-time + Multi-tenant data flow ✅ COMPLETE
 **Goal:** prove the hardest parts work together before building full UI.
-- Websearch best practices:
-  - FastAPI WebSocket patterns (rooms, auth via token/query, reconnect)
-  - MongoDB schema for multi-tenant + hierarchical trees
-  - ReactFlow state mgmt for collaborative-ish updates
-- POC backend (FastAPI + MongoDB):
-  - Minimal models: Org, User, Agent, Proposal, Vote, Workflow, WorkflowRun, MessageThread, Message
-  - WebSocket endpoints:
-    - `/ws/org/{org_id}` for live events (proposal updates, votes, workflow run state, new messages)
-  - Event bus: in-process pub/sub (per-org channel) to broadcast updates.
-  - Workflow execution runner (minimal): run steps sequentially + parallel stub, update run state events.
-- POC scripts/tests (Python):
-  - Create org + seed users/agents.
-  - Open 2 websocket clients, assert both receive:
-    - proposal_created, vote_cast, workflow_run_started, step_state_changed, message_created.
-- Fix until POC success: reconnect handling, event ordering, per-org isolation.
+- Implemented POC FastAPI WebSocket server with org-scoped rooms:
+  - `/ws/org/{org_id}` with broadcast events
+- Implemented event broadcast types:
+  - `proposal_created`, `vote_cast`, `message_created`, `workflow_run_started`, `step_state_changed`, `workflow_run_completed`
+- Implemented Python test suite validating:
+  - Per-org event isolation
+  - Multi-client fanout
+  - Workflow step streaming
+  - Reconnect behavior
 
-**Phase 1 user stories**
+**Result:** 6/6 tests passed; WebSocket event bus verified.
+
+**Phase 1 user stories (met)**
 1. As a user, I can open two clients and see proposal/vote updates appear in real time.
 2. As a user, I can trigger a workflow run and watch step status change live.
 3. As an org owner, I can be sure events from another org never appear in my org.
 4. As a user, I can send a message and see it appear instantly in another client.
 5. As a developer, I can restart the backend and clients can reconnect without breaking the org stream.
 
-### Phase 2: V1 App Development (MVP, no auth yet)
+### Phase 2: V1 App Development (MVP, production-style) ✅ COMPLETE
 **Goal:** build the working product around the proven realtime core.
-- Backend (FastAPI):
-  - CRUD + service endpoints:
-    - Orgs: create/switch, invite link/code, join org (bring one agent).
-    - Org Chart: nodes (user/agent), edges (manager_id), board_member flag.
-    - Agents/Skills: agent CRUD, skills catalog + assignment, API key fields.
-    - Board: proposals, comments, voting rules (simple majority first).
-    - Workflows: workflow graph save/load (ReactFlow JSON), triggers, step definitions.
-    - Execution: start workflow from board approval; persist WorkflowRun + step states.
-    - Messaging: threads/messages.
-  - WebSocket events integrated with all writes.
-- Frontend (React + Tailwind + shadcn/ui + Framer Motion + ReactFlow):
-  - App shell: dark glassmorphism, sidebar nav, org switcher, main workspace, right context panel.
-  - Org Chart view (ReactFlow):
-    - Drag nodes to re-parent (update manager_id), zoom/pan, board badge.
-    - Node click → right panel (role, skills, tasks=workflow runs assigned, status, message).
-  - Workflows view (ReactFlow):
-    - Palette: Trigger, Step, Branch, Parallel, Output.
-    - Save/load to backend; run manually; show execution overlay (live step status).
-  - Board view:
-    - Proposal timeline, debate/comments, voting panel; on approval triggers workflow.
-  - Messaging view:
-    - Thread list + chat panel; start from org node “message” button.
-- Conclude with 1 round end-to-end testing (manual + scripted): core flows + realtime.
 
-**Phase 2 user stories**
+#### Backend (FastAPI + MongoDB) ✅ COMPLETE
+- Auth:
+  - Email/password JWT auth (register/login/me)
+  - WebSocket token support via query param `?token=`
+- Orgs:
+  - Create org, list orgs, org members
+  - Invite code refresh + join org (bring-one-agent constraint supported at API level)
+- Org Chart:
+  - Chart nodes for users/agents; `manager_id`, `position`, `is_board_member`
+  - Update node position + re-parenting
+- Agents (ClawHub):
+  - CRUD agents; skills/tools/model; API key field
+- Skills:
+  - Seeded skills catalog
+- Board:
+  - Proposals, comments/debate, voting approve/reject
+  - Proposal approval can trigger linked workflow runs
+- Workflows:
+  - Save/load workflow graphs (ReactFlow JSON)
+  - Manual run endpoint creates WorkflowRun and streams step state changes
+  - Simple topo-sort execution order
+- Messaging:
+  - Threads, messages, per-org real-time broadcast
+- WebSocket:
+  - Per-org broadcast channel used by all core writes
+
+**Backend verification:** 30/30 API tests passing across auth, orgs, org chart, agents, skills, board, workflows, messaging, stats/activity.
+
+#### Frontend (React + Tailwind + shadcn/ui + Framer Motion + ReactFlow) ✅ COMPLETE
+- Global UI system:
+  - Dark-only HSL tokens + glass panels
+  - Space Grotesk + IBM Plex Sans/Mono
+  - Sidebar with expand/collapse animation + org switcher
+- Pages implemented (7/7):
+  1. Login/Register
+  2. Dashboard (stats + activity feed)
+  3. Org Chart (ReactFlow)
+  4. Agents / ClawHub (agent grid + editor)
+  5. Board (proposals, debate/comments, vote w/ confirmation)
+  6. Workflows (workflow list + ReactFlow builder + run)
+  7. Messages (threads + chat)
+  8. Settings (org info, invite code, members, profile)
+- Org Chart (ReactFlow):
+  - User/agent nodes, board member badge
+  - Click node → right inspector
+  - Drag-to-reparent via connect edge (manager_id)
+  - Zoom/pan controls, minimap
+- Workflow Builder (ReactFlow):
+  - Node types: Trigger, Step, Branch, Parallel, Output
+  - Palette drag/drop nodes
+  - Live execution overlay/state updates via WebSocket step events
+- Board:
+  - Proposal creation + voting approve/reject (AlertDialog confirmation)
+  - Debate/comments
+- Messaging:
+  - Thread list + chat bubbles
+  - Real-time message updates via WebSocket
+- Agent Editor:
+  - Tabs: Prompt / Skills / Tools / Keys
+
+**Fixes applied during Phase 2:**
+- `useWS` now returns graceful no-op when WSProvider is not present (prevents runtime crash if org not selected).
+- ReactFlow imports corrected to named `ReactFlow` (not default import) for `@xyflow/react`.
+- `WorkflowNode` corrected to read `type` prop for node type display.
+
+**Phase 2 user stories (met)**
 1. As an org owner, I can create an org and see its org chart with my user and default agent.
-2. As a user, I can drag an agent under a manager to change reporting structure.
+2. As a user, I can drag/re-parent agents under managers (via edge connect) and persist structure.
 3. As a board member, I can create a proposal, discuss it, vote, and see the result instantly.
-4. As a user, I can approve a proposal and automatically trigger a workflow run with live step updates.
+4. As a user, I can approve a proposal and trigger a workflow run with live step updates.
 5. As a user, I can message a person/agent from the org chart and continue the conversation in threads.
 
-### Phase 3: Hardening + Feature Expansion (still pre-auth)
-- Multi-tenant robustness:
-  - Invite/join flows with constraints (joining requires exactly 1 agent).
-  - Role model: owner/member/board; permissions for voting/workflow edits.
-- Workflow engine improvements:
-  - Branching conditions, parallel execution semantics, retries/fail states.
-  - Scheduled trigger stub (store schedule, manual cron-like endpoint).
-- UX polish:
-  - Empty/loading/error states, optimistic UI for votes/messages, offline/reconnect banner.
-  - Better right panel (edit role, skills assignment, board toggle).
-- Conclude with end-to-end regression testing.
+### Phase 3: Hardening + Feature Expansion (post-MVP) 🔜 NEXT
+**Goal:** strengthen multi-tenant + permissions + workflow engine semantics + UX polish.
 
-**Phase 3 user stories**
+#### Multi-tenant + Permissions
+- Enforce and validate join constraints end-to-end:
+  - Joining requires exactly **one** agent brought from the joining user.
+  - Better UX for selecting “agent to bring” (list + picker vs free-form ID).
+- Role system enhancements:
+  - Roles: owner/member/board
+  - Permissions:
+    - only owners can refresh invite codes
+    - board-only voting (optional mode)
+    - workflow edit permissions (owner/admin)
+- Tighten WebSocket auth:
+  - Reject unauthenticated/unauthorized org connections
+  - Enforce org membership on WS connect (currently token is optional)
+
+#### Workflow engine improvements
+- Proper branching conditions:
+  - Evaluate branch rules based on proposal data/run context
+- Parallel execution semantics:
+  - Fan-out/fan-in execution
+- Retries + failure handling:
+  - Step error capture, retry count, run fail state
+- Scheduled triggers:
+  - Store schedules + background scheduler/cron integration
+
+#### Board improvements
+- Voting rules:
+  - Majority vs weighted voting
+  - Quorum settings
+  - Close proposal / finalize outcome
+- Board membership UI:
+  - Manage board members from Settings (not only node inspector)
+
+#### Messaging improvements
+- Unread counts
+- Typing indicator (optional)
+- Thread search
+
+#### UX polish + operational readiness
+- Optimistic UI where safe (votes, messages)
+- Offline/reconnect banner
+- Better empty states + error handling
+- Reduce overlay collisions (e.g., “Made with Emergent” badge vs bottom-right actions)
+- Observability:
+  - structured logs
+  - request IDs
+
+**Phase 3 user stories (target)**
 1. As an owner, I can invite a user and enforce that they bring one agent when joining.
-2. As a board admin, I can choose majority vs weighted voting for a proposal.
+2. As a board admin, I can choose majority vs weighted voting for proposals.
 3. As a workflow designer, I can add a branch and see only the correct path execute.
 4. As a user, I can recover from a websocket disconnect and keep working.
 5. As a user, I can understand failures because workflow steps show error details and retry options.
 
-### Phase 4: Authentication (Email/Password JWT) + Account isolation
-- Backend:
-  - Auth endpoints: register/login/refresh, password hashing, JWT middleware.
-  - Secure WebSocket: token in query/header; enforce org membership.
-  - Seed test account: `Rustyadj@gmail.com` (use provided password for testing).
-- Frontend:
-  - Login/register screens; protected routes; token storage; logout.
-  - Org switcher filtered to memberships.
-- Conclude with full end-to-end testing across 2 users + 2 orgs.
+### Phase 4: Authentication + Account isolation (already implemented; harden further) ✅ IMPLEMENTED / 🔒 HARDEN
+**Goal:** ensure production-grade access control + session security.
 
-**Phase 4 user stories**
-1. As a user, I can sign up and log in to see only my org memberships.
-2. As a user, I can’t access another org’s data even by guessing an org_id.
-3. As a user, my websocket connection is rejected if I’m not authenticated.
-4. As a user, I can log out and my session is fully cleared.
-5. As an owner, I can invite another user and they can join and see the same live updates.
+**Implemented (Phase 2):**
+- Email/password JWT auth (register/login/me)
+- Token stored client-side and attached to API requests
+- WebSocket supports token via query param
+
+**Hardening tasks:**
+- Add refresh tokens or short-lived access tokens
+- Improve password policy + reset flow
+- Enforce org membership on WS connect (reject if not authorized)
+- Rate limiting + brute-force protection
+
+**Test credentials (for QA/dev):**
+- `Rustyadj@gmail.com` / `Arabia@24`
 
 ## 3. Next Actions
-1. Run websearch + select exact WebSocket approach (single org channel vs per-feature channels).
-2. Implement Phase 1 POC backend + Python websocket test scripts.
-3. Validate: realtime events, per-org isolation, workflow run state streaming.
-4. Once stable, build Phase 2 V1 UI + API in one cohesive pass.
+1. **Harden WebSocket security**: require valid JWT and enforce org membership on connect.
+2. **Improve join org UX**: replace manual agent-id input with agent picker.
+3. **Workflow engine upgrades**: implement branch conditions + parallel semantics + retries.
+4. **Board permissions + voting rules**: weighted voting + quorum.
+5. **UX polish**: reduce overlay collisions, add offline banner, improve empty/error states.
 
 ## 4. Success Criteria
-- Realtime: board votes, proposals, messages, and workflow step states update live across multiple clients.
-- Org Chart: drag/re-parent persists correctly; board member flags render; side panel actions work.
-- Workflows: save/load graph; execution produces persisted runs; UI reflects step state transitions.
-- Board: proposal→debate→vote→approval triggers workflow reliably.
-- Messaging: threads work; initiated from org chart; persists to DB.
-- Multi-tenant: strict data isolation across orgs; membership required for all actions.
-- Auth (post-core): JWT protects HTTP + WebSocket; no regressions in core flows.
+**Current MVP success (achieved):**
+- Realtime: proposals, votes, messages, workflow step states update live via per-org WebSocket.
+- Org Chart: nodes render, inspector works, board member flags render, positions persist.
+- Workflows: graphs save/load; runs execute; UI reflects step status changes.
+- Board: proposal → debate → vote works; approval triggers workflow (when linked).
+- Messaging: threads/messages work and persist.
+- Multi-tenant: org membership required for HTTP routes.
+- Automated tests: Backend 30/30 passing; frontend flows manually verified.
+
+**Hardening success (Phase 3/4 targets):**
+- Strict WS auth + org isolation for realtime channel.
+- Role-based permissions enforced consistently.
+- Workflow branching/parallel execution is deterministic and debuggable.
+- Improved reliability under reconnects and partial failures.

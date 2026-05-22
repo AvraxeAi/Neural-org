@@ -17,8 +17,8 @@ const STATUS_STYLES = {
   failed:    { border: '#ef4444',               glow: '0 0 10px rgba(239,68,68,0.25)',     dot: '#ef4444' },
 };
 
-const WorkflowNode = memo(({ data, selected }) => {
-  const nodeType = data.nodeType || data.type || 'step';
+const WorkflowNode = memo(({ data, selected, type }) => {
+  const nodeType = type || data.nodeType || data.type || 'step';
   const config = TYPE_CONFIG[nodeType] || TYPE_CONFIG.step;
   const status = data.status || 'idle';
   const ss = STATUS_STYLES[status] || STATUS_STYLES.idle;

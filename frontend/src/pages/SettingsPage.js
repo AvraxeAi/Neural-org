@@ -5,7 +5,7 @@ import { orgAPI } from '../lib/api';
 import { toast } from 'sonner';
 import {
   Settings, User, Building2, Users, Copy, Check,
-  RefreshCw, Shield, Crown, LogOut
+  RefreshCw, Shield, Crown, LogOut, Cpu, Key, Zap
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -14,6 +14,7 @@ import { Badge } from '../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Separator } from '../components/ui/separator';
+import HealthPanel from '../components/Layout/HealthPanel';
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
@@ -22,12 +23,18 @@ export default function SettingsPage() {
   const [inviteCode, setInviteCode] = useState('');
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [orgConfig, setOrgConfig] = useState({ default_provider:'', default_model:'', openrouter_key:'', api_key:'' });
+  const [savingConfig, setSavingConfig] = useState(false);
 
   const fetchMembers = useCallback(async () => {
     if (!currentOrg) return;
     const res = await orgAPI.listMembers(currentOrg.id);
     setMembers(res.data);
     setInviteCode(currentOrg.invite_code || '');
+    try {
+      const cfgRes = await orgAPI.getConfig(currentOrg.id);
+      setOrgConfig(prev => ({ ...prev, ...cfgRes.data }));
+    } catch { }
   }, [currentOrg]);
 
   useEffect(() => { fetchMembers(); }, [fetchMembers]);
@@ -62,6 +69,8 @@ export default function SettingsPage() {
           <TabsList style={{background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)'}}>
             <TabsTrigger value="org">Organization</TabsTrigger>
             <TabsTrigger value="members">Members</TabsTrigger>
+            <TabsTrigger value="providers">AI Providers</TabsTrigger>
+            <TabsTrigger value="health">System Health</TabsTrigger>
             <TabsTrigger value="profile">Profile</TabsTrigger>
           </TabsList>
 
@@ -134,6 +143,72 @@ export default function SettingsPage() {
                   })}
                 </div>
               </ScrollArea>
+            </div>
+          </TabsContent>
+
+          {/* AI Providers tab */}
+          <TabsContent value="providers" className="mt-4 space-y-4">
+            <div className="rounded-2xl p-5" style={{background:'var(--surface-1)', border:'1px solid rgba(255,255,255,0.07)'}}>
+              <div className="flex items-center gap-2 mb-4">
+                <Cpu size={16} style={{color:'#a78bfa'}} />
+                <h3 className="text-sm font-semibold" style={{fontFamily:'Space Grotesk'}}>AI Provider Configuration</h3>
+              </div>
+              <div className="space-y-3">
+                <div className="rounded-xl p-3" style={{background:'rgba(34,211,238,0.06)', border:'1px solid rgba(34,211,238,0.15)'}}>
+                  <p className="text-xs font-medium mb-0.5" style={{color:'#22d3ee'}}>Default</p>
+                  <p className="text-xs" style={{color:'rgba(255,255,255,0.5)'}}>Emergent Universal Key is active by default (OpenAI, Anthropic, Gemini). No setup needed.</p>
+                </div>
+                <div>
+                  <Label className="text-xs mb-1.5 block" style={{color:'rgba(255,255,255,0.5)'}}>OpenRouter API Key</Label>
+                  <Input
+                    type="password"
+                    value={orgConfig.openrouter_key || ''}
+                    onChange={e => setOrgConfig(p=>({...p, openrouter_key:e.target.value}))}
+                    placeholder="sk-or-... (enables DeepSeek + 300 models)"
+                    className="font-mono text-xs"
+                    style={{background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)'}}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs mb-1.5 block" style={{color:'rgba(255,255,255,0.5)'}}>Default Provider Override</Label>
+                  <Input
+                    value={orgConfig.default_provider || ''}
+                    onChange={e => setOrgConfig(p=>({...p, default_provider:e.target.value}))}
+                    placeholder="openai / anthropic / gemini / openrouter"
+                    style={{background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)'}}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs mb-1.5 block" style={{color:'rgba(255,255,255,0.5)'}}>Default Model Override</Label>
+                  <Input
+                    value={orgConfig.default_model || ''}
+                    onChange={e => setOrgConfig(p=>({...p, default_model:e.target.value}))}
+                    placeholder="e.g. gpt-4.1, claude-sonnet-4-6"
+                    style={{background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)'}}
+                  />
+                </div>
+                <Button
+                  data-testid="save-provider-config"
+                  onClick={async () => {
+                    setSavingConfig(true);
+                    try {
+                      await orgAPI.updateConfig(currentOrg.id, orgConfig);
+                      toast.success('Provider config saved!');
+                    } catch { toast.error('Failed to save'); } finally { setSavingConfig(false); }
+                  }}
+                  disabled={savingConfig}
+                  style={{background:'hsl(var(--primary))', color:'hsl(var(--primary-foreground))'}}>
+                  {savingConfig ? 'Saving...' : 'Save Provider Config'}
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Health tab */}
+          <TabsContent value="health" className="mt-4">
+            <div className="rounded-2xl p-5" style={{background:'var(--surface-1)', border:'1px solid rgba(255,255,255,0.07)'}}>
+              <h3 className="text-sm font-semibold mb-4" style={{fontFamily:'Space Grotesk'}}>System Health</h3>
+              <HealthPanel orgId={currentOrg?.id} />
             </div>
           </TabsContent>
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import '@/App.css';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -12,6 +12,8 @@ import BoardPage from './pages/BoardPage';
 import WorkflowsPage from './pages/WorkflowsPage';
 import MessagesPage from './pages/MessagesPage';
 import SettingsPage from './pages/SettingsPage';
+import DeliberationPage from './pages/DeliberationPage';
+import MemoryPage from './pages/MemoryPage';
 import AppLayout from './components/Layout/AppLayout';
 
 function ProtectedRoute({ children }) {
@@ -45,16 +47,18 @@ function App() {
       <AuthProvider>
         <BrowserRouter>
           <Routes>
-            <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
-            <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-            <Route path="/org-chart" element={<ProtectedRoute><OrgChartPage /></ProtectedRoute>} />
-            <Route path="/agents" element={<ProtectedRoute><AgentsPage /></ProtectedRoute>} />
-            <Route path="/board" element={<ProtectedRoute><BoardPage /></ProtectedRoute>} />
-            <Route path="/workflows" element={<ProtectedRoute><WorkflowsPage /></ProtectedRoute>} />
-            <Route path="/messages" element={<ProtectedRoute><MessagesPage /></ProtectedRoute>} />
-            <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/login"         element={<PublicRoute><LoginPage /></PublicRoute>} />
+            <Route path="/dashboard"     element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+            <Route path="/org-chart"     element={<ProtectedRoute><OrgChartPage /></ProtectedRoute>} />
+            <Route path="/agents"        element={<ProtectedRoute><AgentsPage /></ProtectedRoute>} />
+            <Route path="/board"         element={<ProtectedRoute><BoardPage /></ProtectedRoute>} />
+            <Route path="/workflows"     element={<ProtectedRoute><WorkflowsPage /></ProtectedRoute>} />
+            <Route path="/deliberation"  element={<ProtectedRoute><DeliberationPage /></ProtectedRoute>} />
+            <Route path="/memory"        element={<ProtectedRoute><MemoryPage /></ProtectedRoute>} />
+            <Route path="/messages"      element={<ProtectedRoute><MessagesPage /></ProtectedRoute>} />
+            <Route path="/settings"      element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+            <Route path="/"              element={<Navigate to="/dashboard" replace />} />
+            <Route path="*"              element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </BrowserRouter>
         <Toaster richColors position="top-right" />

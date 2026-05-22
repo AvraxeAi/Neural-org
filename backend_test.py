@@ -476,6 +476,144 @@ class OpenClawAPITester:
         
         return True
 
+    def test_phase3_deliberation_endpoints(self):
+        """Test Phase 3 deliberation endpoints"""
+        print("\n" + "="*60)
+        print("TESTING PHASE 3 - DELIBERATION ENDPOINTS")
+        print("="*60)
+        
+        if not self.org_id:
+            print("❌ No org_id - skipping deliberation tests")
+            return False
+        
+        # List deliberations
+        success, response = self.run_test(
+            "List organization deliberations",
+            "GET",
+            f"orgs/{self.org_id}/deliberations",
+            200
+        )
+        
+        # If there are existing deliberations, test getting one
+        if success and response and len(response) > 0:
+            delib_id = response[0]['id']
+            print(f"   Found existing deliberation: {delib_id}")
+            self.run_test(
+                "Get single deliberation details",
+                "GET",
+                f"deliberations/{delib_id}",
+                200
+            )
+        else:
+            print("   No existing deliberations found (expected for new org)")
+        
+        return True
+
+    def test_phase3_memory_endpoints(self):
+        """Test Phase 3 memory graph endpoints"""
+        print("\n" + "="*60)
+        print("TESTING PHASE 3 - MEMORY GRAPH ENDPOINTS")
+        print("="*60)
+        
+        if not self.org_id:
+            print("❌ No org_id - skipping memory tests")
+            return False
+        
+        # List memory nodes
+        self.run_test(
+            "List memory nodes",
+            "GET",
+            f"orgs/{self.org_id}/memory/nodes",
+            200
+        )
+        
+        # List memory edges
+        self.run_test(
+            "List memory edges",
+            "GET",
+            f"orgs/{self.org_id}/memory/edges",
+            200
+        )
+        
+        return True
+
+    def test_phase3_notification_endpoints(self):
+        """Test Phase 3 notification endpoints"""
+        print("\n" + "="*60)
+        print("TESTING PHASE 3 - NOTIFICATION ENDPOINTS")
+        print("="*60)
+        
+        if not self.org_id:
+            print("❌ No org_id - skipping notification tests")
+            return False
+        
+        # List notifications
+        self.run_test(
+            "List organization notifications",
+            "GET",
+            f"orgs/{self.org_id}/notifications",
+            200
+        )
+        
+        # Get unread count
+        self.run_test(
+            "Get unread notification count",
+            "GET",
+            f"orgs/{self.org_id}/notifications/count",
+            200
+        )
+        
+        return True
+
+    def test_phase3_system_health_endpoints(self):
+        """Test Phase 3 system health endpoints"""
+        print("\n" + "="*60)
+        print("TESTING PHASE 3 - SYSTEM HEALTH ENDPOINTS")
+        print("="*60)
+        
+        if not self.org_id:
+            print("❌ No org_id - skipping health tests")
+            return False
+        
+        # Get system health
+        success, response = self.run_test(
+            "Get system health",
+            "GET",
+            f"orgs/{self.org_id}/health",
+            200
+        )
+        
+        if success and response:
+            print(f"   Health data received:")
+            if 'providers' in response:
+                print(f"     - Providers: {len(response['providers'])} entries")
+            if 'connections' in response:
+                print(f"     - Connections: {response['connections']}")
+            if 'org_stats' in response:
+                print(f"     - Org stats: {response['org_stats']}")
+        
+        return True
+
+    def test_phase3_events_endpoints(self):
+        """Test Phase 3 events log endpoints"""
+        print("\n" + "="*60)
+        print("TESTING PHASE 3 - EVENTS LOG ENDPOINTS")
+        print("="*60)
+        
+        if not self.org_id:
+            print("❌ No org_id - skipping events tests")
+            return False
+        
+        # Get events
+        self.run_test(
+            "Get organization events log",
+            "GET",
+            f"orgs/{self.org_id}/events",
+            200
+        )
+        
+        return True
+
     def print_summary(self):
         """Print test summary"""
         print("\n" + "="*60)
@@ -520,6 +658,16 @@ def main():
     tester.test_workflow_endpoints()
     tester.test_messaging_endpoints()
     tester.test_dashboard_endpoints()
+    
+    # Phase 3 tests
+    print("\n" + "="*60)
+    print("PHASE 3 FEATURE TESTING")
+    print("="*60)
+    tester.test_phase3_deliberation_endpoints()
+    tester.test_phase3_memory_endpoints()
+    tester.test_phase3_notification_endpoints()
+    tester.test_phase3_system_health_endpoints()
+    tester.test_phase3_events_endpoints()
     
     # Print summary
     all_passed = tester.print_summary()

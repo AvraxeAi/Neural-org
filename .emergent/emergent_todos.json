@@ -1,10 +1,46 @@
 [
   {
-    "content": "Phase 2: End-to-end testing with testing agent",
+    "content": "Phase 3: Event-driven architecture (EventBus, typed events, persistent log)",
     "status": "completed"
   },
   {
-    "content": "Phase 2: All user stories covered - Dashboard, Org Chart, Agents, Board, Workflows, Messages, Settings",
+    "content": "Phase 3: Modular provider system (Emergent + OpenRouter + model routing)",
     "status": "completed"
+  },
+  {
+    "content": "Phase 3: Real-time presence system (online/typing/thinking/voting)",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 3: Permission hierarchy (Owner>Board>Member>Agent>Observer)",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 3: Notification center (persistent + real-time)",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 3: AI Deliberation Engine + Room (THE viral feature)",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 3: Agent identity system (personality/goals/reputation)",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 3: Memory graph (functional + visual)",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 3: System health dashboard (provider uptime/latency)",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 3: Frontend - all new pages + updated components",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 3: End-to-end testing",
+    "status": "in_progress"
   }
 ]

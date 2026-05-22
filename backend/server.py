@@ -1,23 +1,28 @@
-from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
+from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, status, Query
 from fastapi.security import OAuth2PasswordBearer
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from passlib.context import CryptContext
 from jose import jwt, JWTError
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel
 from typing import Optional, List, Any
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
-import os, uuid, asyncio, json, logging, random, string
+import os, uuid, asyncio, json, logging, random, string, time
+
+# local modules
+from events_bus import EventBus, OrgEvent
+import providers as prov
+import deliberation as delib
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
 # ── Config ────────────────────────────────────────────────────────────────
-SECRET_KEY = os.environ.get("JWT_SECRET", "openclaw-super-secret-key-2024")
-ALGORITHM  = "HS256"
-TOKEN_EXPIRE_HOURS = 24
+SECRET_KEY   = os.environ.get("JWT_SECRET", "openclaw-super-secret-key-2024")
+ALGORITHM    = "HS256"
+TOKEN_EXPIRE = 24  # hours
 
 # ── DB ────────────────────────────────────────────────────────────────────
 mongo_url = os.environ["MONGO_URL"]
@@ -26,7 +31,7 @@ DB_NAME   = os.environ.get("DB_NAME", "openclaw")
 db        = client[DB_NAME]
 
 # ── App + Router ──────────────────────────────────────────────────────────
-app        = FastAPI(title="OpenClaw Command Center")
+app        = FastAPI(title="OpenClaw Command Center v2")
 api_router = APIRouter(prefix="/api")
 
 app.add_middleware(
@@ -44,46 +49,46 @@ logger = logging.getLogger("openclaw")
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
-def hash_password(pw: str) -> str:
-    return pwd_ctx.hash(pw)
-
-def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_ctx.verify(plain, hashed)
+def hash_password(pw): return pwd_ctx.hash(pw)
+def verify_password(plain, hashed): return pwd_ctx.verify(plain, hashed)
 
 def create_token(data: dict) -> str:
     payload = data.copy()
-    payload["exp"] = datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRE_HOURS)
+    payload["exp"] = datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRE)
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+        raise HTTPException(401, "Not authenticated")
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: str = payload.get("sub")
+        user_id = payload.get("sub")
         if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid token")
+            raise HTTPException(401, "Invalid token")
     except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        raise HTTPException(401, "Invalid token")
     user = await db.users.find_one({"id": user_id}, {"_id": 0})
     if not user:
-        raise HTTPException(status_code=401, detail="User not found")
+        raise HTTPException(401, "User not found")
     return user
 
 # ── WebSocket Manager ─────────────────────────────────────────────────────
 class OrgConnectionManager:
     def __init__(self):
-        self._rooms: dict[str, list[tuple[WebSocket, str]]] = {}
+        self._rooms: dict[str, list[tuple]] = {}
+        self._user_map: dict[str, str] = {}  # client_id → user_id
 
-    async def connect(self, org_id: str, ws: WebSocket, client_id: str):
+    async def connect(self, org_id: str, ws: WebSocket, client_id: str, user_id: str = ""):
         await ws.accept()
         self._rooms.setdefault(org_id, []).append((ws, client_id))
+        if user_id:
+            self._user_map[client_id] = user_id
 
     def disconnect(self, org_id: str, ws: WebSocket):
         if org_id in self._rooms:
             self._rooms[org_id] = [(w, c) for w, c in self._rooms[org_id] if w is not ws]
 
-    async def broadcast(self, org_id: str, event: dict, exclude_ws: WebSocket | None = None):
+    async def broadcast(self, org_id: str, event: dict, exclude_ws=None):
         payload = json.dumps(event, default=str)
         dead = []
         for ws, _ in self._rooms.get(org_id, []):
@@ -96,147 +101,217 @@ class OrgConnectionManager:
         for ws in dead:
             self.disconnect(org_id, ws)
 
+    def room_size(self, org_id: str) -> int:
+        return len(self._rooms.get(org_id, []))
+
+    def get_client_ids(self, org_id: str) -> list:
+        return [c for _, c in self._rooms.get(org_id, [])]
+
 ws_manager = OrgConnectionManager()
 
+# ── Event Bus ─────────────────────────────────────────────────────────────
+event_bus = EventBus(db, ws_manager)
+
+# ── Presence (in-memory, heartbeat-driven) ────────────────────────────────
+# presence[org_id][user_id] = {status, last_seen, typing_in, thinking, name, avatar_color}
+presence: dict[str, dict] = {}
+
+async def update_presence(org_id: str, user_id: str, name: str, avatar_color: str,
+                           status: str = "online", typing_in: str = "", thinking: bool = False):
+    presence.setdefault(org_id, {})[user_id] = {
+        "user_id": user_id, "name": name, "avatar_color": avatar_color,
+        "status": status, "typing_in": typing_in,
+        "thinking": thinking, "last_seen": now_iso()
+    }
+    await event_bus.publish(OrgEvent(
+        event_type="presence.updated", org_id=org_id, actor_id=user_id,
+        payload={"user_id": user_id, "name": name, "status": status,
+                 "typing_in": typing_in, "thinking": thinking},
+        persist=False  # presence events not stored
+    ), persist=False)
+
+def get_presence(org_id: str) -> list:
+    import time as _time
+    cutoff = _time.time() - 120  # 2-minute window
+    result = []
+    for uid, p in presence.get(org_id, {}).items():
+        try:
+            ts = datetime.fromisoformat(p["last_seen"].replace("Z","")).timestamp()
+            if ts > cutoff:
+                result.append(p)
+        except Exception:
+            result.append(p)
+    return result
+
 # ── Helpers ───────────────────────────────────────────────────────────────
-def serialize_doc(doc: dict) -> dict:
-    if not doc:
-        return doc
+def serialize_doc(doc):
+    if not doc: return doc
     doc.pop("_id", None)
     for k, v in list(doc.items()):
-        if isinstance(v, datetime):
-            doc[k] = v.isoformat()
-        elif isinstance(v, dict):
-            doc[k] = serialize_doc(v)
-        elif isinstance(v, list):
-            doc[k] = [serialize_doc(i) if isinstance(i, dict) else (i.isoformat() if isinstance(i, datetime) else i) for i in v]
+        if isinstance(v, datetime): doc[k] = v.isoformat()
+        elif isinstance(v, dict):   doc[k] = serialize_doc(v)
+        elif isinstance(v, list):   doc[k] = [serialize_doc(i) if isinstance(i, dict) else (i.isoformat() if isinstance(i, datetime) else i) for i in v]
     return doc
 
-def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-def gen_id() -> str:
-    return str(uuid.uuid4())
-
-def gen_invite_code(n=8) -> str:
-    return "".join(random.choices(string.ascii_uppercase + string.digits, k=n))
-
+def now_iso(): return datetime.now(timezone.utc).isoformat()
+def gen_id():  return str(uuid.uuid4())
+def gen_invite_code(n=8): return "".join(random.choices(string.ascii_uppercase + string.digits, k=n))
 AVATAR_COLORS = ["#22d3ee","#f59e0b","#10b981","#6366f1","#ec4899","#f97316","#84cc16","#a78bfa"]
 
-# ── Pydantic Request Models ───────────────────────────────────────────────
-class RegisterRequest(BaseModel):
-    email: str
-    password: str
-    name: str
+# ── Permissions ───────────────────────────────────────────────────────────
+ROLE_RANK = {"owner": 5, "board": 4, "member": 3, "agent": 2, "observer": 1}
 
-class LoginRequest(BaseModel):
-    email: str
-    password: str
+async def _get_member_role(org_id: str, user_id: str) -> Optional[str]:
+    m = await db.org_members.find_one({"org_id": org_id, "user_id": user_id})
+    return m.get("role") if m else None
+
+async def _assert_member(org_id, user_id):
+    role = await _get_member_role(org_id, user_id)
+    if not role:
+        raise HTTPException(403, "Not a member of this org")
+    return role
+
+async def _assert_min_role(org_id, user_id, min_role: str):
+    role = await _get_member_role(org_id, user_id)
+    if not role or ROLE_RANK.get(role, 0) < ROLE_RANK.get(min_role, 0):
+        raise HTTPException(403, f"Requires {min_role} role or higher")
+    return role
+
+async def _get_org_config(org_id: str) -> dict:
+    cfg = await db.org_configs.find_one({"org_id": org_id}, {"_id": 0}) or {}
+    return {
+        "provider": cfg.get("default_provider", ""),
+        "model": cfg.get("default_model", ""),
+        "openrouter_key": cfg.get("openrouter_key", os.environ.get("OPENROUTER_API_KEY", "")),
+        "api_key": cfg.get("api_key", ""),
+    }
+
+# ── Pydantic request models ───────────────────────────────────────────────
+class RegisterReq(BaseModel):
+    email: str; password: str; name: str
+
+class LoginReq(BaseModel):
+    email: str; password: str
 
 class OrgCreate(BaseModel):
-    name: str
-    description: str = ""
+    name: str; description: str = ""
 
-class JoinOrgRequest(BaseModel):
-    invite_code: str
-    agent_id: str  # agent to bring
+class OrgConfigUpdate(BaseModel):
+    default_provider: Optional[str] = None
+    default_model: Optional[str] = None
+    openrouter_key: Optional[str] = None
+    api_key: Optional[str] = None
+
+class JoinOrgReq(BaseModel):
+    invite_code: str; agent_id: str
 
 class AgentCreate(BaseModel):
-    name: str
-    role: str = "Assistant"
-    system_prompt: str = ""
-    skills: list = []
-    tools: list = []
-    model: str = "gpt-4"
+    name: str; role: str = "Assistant"; system_prompt: str = ""
+    skills: list = []; tools: list = []; model: str = "gpt-4.1-mini"
+    provider_override: str = ""; model_override: str = ""
 
 class AgentUpdate(BaseModel):
-    name: Optional[str] = None
-    role: Optional[str] = None
-    system_prompt: Optional[str] = None
-    skills: Optional[list] = None
-    tools: Optional[list] = None
-    model: Optional[str] = None
-    api_key: Optional[str] = None
-    manager_id: Optional[str] = None
-    is_board_member: Optional[bool] = None
-    status: Optional[str] = None
-    position: Optional[dict] = None
+    name: Optional[str]=None; role: Optional[str]=None; system_prompt: Optional[str]=None
+    skills: Optional[list]=None; tools: Optional[list]=None; model: Optional[str]=None
+    api_key: Optional[str]=None; manager_id: Optional[str]=None
+    is_board_member: Optional[bool]=None; status: Optional[str]=None
+    position: Optional[dict]=None; provider_override: Optional[str]=None
+    model_override: Optional[str]=None
+    # Identity
+    personality_traits: Optional[list]=None; goals: Optional[list]=None
+    reputation_score: Optional[float]=None
 
 class ProposalCreate(BaseModel):
-    title: str
-    description: str = ""
-    workflow_id: Optional[str] = None
-    voting_type: str = "majority"
+    title: str; description: str = ""; workflow_id: Optional[str]=None; voting_type: str = "majority"
 
-class VoteRequest(BaseModel):
-    value: str  # "approve" or "reject"
+class VoteReq(BaseModel):
+    value: str  # approve/reject
 
 class CommentCreate(BaseModel):
     text: str
 
 class WorkflowCreate(BaseModel):
-    name: str
-    description: str = ""
-    trigger_type: str = "manual"
-    nodes: list = []
-    edges: list = []
+    name: str; description: str = ""; trigger_type: str = "manual"
+    nodes: list = []; edges: list = []
 
 class WorkflowUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    trigger_type: Optional[str] = None
-    nodes: Optional[list] = None
-    edges: Optional[list] = None
+    name: Optional[str]=None; description: Optional[str]=None
+    trigger_type: Optional[str]=None; nodes: Optional[list]=None; edges: Optional[list]=None
 
 class ThreadCreate(BaseModel):
-    title: str
-    participants: list  # [{id, type, name}]
+    title: str; participants: list
 
 class MessageCreate(BaseModel):
     text: str
 
 class MemberRoleUpdate(BaseModel):
-    role: str
+    role: str  # owner/board/member/observer
 
-# ── ① AUTH ROUTES ─────────────────────────────────────────────────────────
+class NotifMarkRead(BaseModel):
+    notification_ids: list = []  # empty = mark all
+
+class PresenceUpdate(BaseModel):
+    typing_in: str = ""
+    thinking: bool = False
+    status: str = "online"
+
+class DeliberationStart(BaseModel):
+    proposal_id: str
+    rounds: int = 1  # deliberation rounds
+
+class MemoryNodeCreate(BaseModel):
+    entity_type: str  # person/agent/project/decision/task/concept
+    name: str
+    description: str = ""
+    metadata: dict = {}
+
+class MemoryEdgeCreate(BaseModel):
+    source_id: str
+    target_id: str
+    edge_type: str  # influenced/proposed/decided/executed/collaborates
+    weight: float = 1.0
+    metadata: dict = {}
+
+# ════════════════════════════════════════════════════════════════════════════
+# ① AUTH
+# ════════════════════════════════════════════════════════════════════════════
 @api_router.post("/auth/register")
-async def register(req: RegisterRequest):
+async def register(req: RegisterReq):
     if await db.users.find_one({"email": req.email.lower()}):
         raise HTTPException(400, "Email already registered")
     user = {
-        "id": gen_id(),
-        "email": req.email.lower(),
+        "id": gen_id(), "email": req.email.lower(),
         "password_hash": hash_password(req.password),
-        "name": req.name,
-        "avatar_color": random.choice(AVATAR_COLORS),
-        "created_at": now_iso(),
+        "name": req.name, "avatar_color": random.choice(AVATAR_COLORS),
+        "created_at": now_iso()
     }
     await db.users.insert_one(user)
     token = create_token({"sub": user["id"]})
-    return {"token": token, "user": {k: v for k, v in user.items() if k != "password_hash" and k != "_id"}}
+    return {"token": token, "user": {k: v for k, v in user.items() if k not in ("password_hash","_id")}}
 
 @api_router.post("/auth/login")
-async def login(req: LoginRequest):
+async def login(req: LoginReq):
     user = await db.users.find_one({"email": req.email.lower()}, {"_id": 0})
     if not user or not verify_password(req.password, user.get("password_hash", "")):
         raise HTTPException(401, "Invalid credentials")
     token = create_token({"sub": user["id"]})
-    safe_user = {k: v for k, v in user.items() if k != "password_hash"}
-    return {"token": token, "user": safe_user}
+    return {"token": token, "user": {k: v for k, v in user.items() if k != "password_hash"}}
 
 @api_router.get("/auth/me")
 async def me(user=Depends(get_current_user)):
     return {k: v for k, v in user.items() if k != "password_hash"}
 
-# ── ② ORG ROUTES ─────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════
+# ② ORGS
+# ════════════════════════════════════════════════════════════════════════════
 @api_router.get("/orgs")
 async def list_orgs(user=Depends(get_current_user)):
-    memberships = await db.org_members.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
-    org_ids = [m["org_id"] for m in memberships]
+    mems = await db.org_members.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
+    org_ids = [m["org_id"] for m in mems]
     orgs = await db.orgs.find({"id": {"$in": org_ids}}, {"_id": 0}).to_list(100)
     result = []
     for org in orgs:
-        m = next((x for x in memberships if x["org_id"] == org["id"]), {})
+        m = next((x for x in mems if x["org_id"] == org["id"]), {})
         org["my_role"] = m.get("role", "member")
         result.append(serialize_doc(org))
     return result
@@ -244,35 +319,30 @@ async def list_orgs(user=Depends(get_current_user)):
 @api_router.post("/orgs")
 async def create_org(req: OrgCreate, user=Depends(get_current_user)):
     org = {
-        "id": gen_id(),
-        "name": req.name,
-        "description": req.description,
-        "owner_id": user["id"],
-        "invite_code": gen_invite_code(),
-        "created_at": now_iso(),
+        "id": gen_id(), "name": req.name, "description": req.description,
+        "owner_id": user["id"], "invite_code": gen_invite_code(), "created_at": now_iso()
     }
     await db.orgs.insert_one(org)
-    member = {
-        "id": gen_id(), "org_id": org["id"],
-        "user_id": user["id"], "role": "owner",
-        "brought_agent_id": None, "joined_at": now_iso()
-    }
-    await db.org_members.insert_one(member)
-    # add user to org chart
+    mem = {"id": gen_id(), "org_id": org["id"], "user_id": user["id"],
+           "role": "owner", "brought_agent_id": None, "joined_at": now_iso()}
+    await db.org_members.insert_one(mem)
     await db.chart_nodes.insert_one({
-        "id": gen_id(), "org_id": org["id"],
-        "node_ref_id": user["id"], "node_type": "user",
-        "manager_id": None, "is_board_member": True,
+        "id": gen_id(), "org_id": org["id"], "node_ref_id": user["id"],
+        "node_type": "user", "manager_id": None, "is_board_member": True,
         "position": {"x": 400, "y": 100}, "created_at": now_iso()
     })
+    await event_bus.publish(OrgEvent(
+        event_type="org.created", org_id=org["id"], actor_id=user["id"],
+        subject_id=org["id"], subject_type="org",
+        payload={"org_name": org["name"], "owner": user["name"]}
+    ))
     return serialize_doc(org)
 
 @api_router.get("/orgs/{org_id}")
 async def get_org(org_id: str, user=Depends(get_current_user)):
     await _assert_member(org_id, user["id"])
     org = await db.orgs.find_one({"id": org_id}, {"_id": 0})
-    if not org:
-        raise HTTPException(404, "Org not found")
+    if not org: raise HTTPException(404)
     return serialize_doc(org)
 
 @api_router.get("/orgs/{org_id}/members")
@@ -282,64 +352,80 @@ async def list_members(org_id: str, user=Depends(get_current_user)):
     result = []
     for m in members:
         u = await db.users.find_one({"id": m["user_id"]}, {"_id": 0, "password_hash": 0})
-        if u:
-            m["user"] = serialize_doc(u)
+        if u: m["user"] = serialize_doc(u)
         result.append(serialize_doc(m))
     return result
 
 @api_router.post("/orgs/{org_id}/invite")
 async def refresh_invite(org_id: str, user=Depends(get_current_user)):
-    await _assert_role(org_id, user["id"], ["owner"])
+    await _assert_min_role(org_id, user["id"], "owner")
     code = gen_invite_code()
     await db.orgs.update_one({"id": org_id}, {"$set": {"invite_code": code}})
     return {"invite_code": code}
 
 @api_router.post("/orgs/join")
-async def join_org(req: JoinOrgRequest, user=Depends(get_current_user)):
+async def join_org(req: JoinOrgReq, user=Depends(get_current_user)):
     org = await db.orgs.find_one({"invite_code": req.invite_code}, {"_id": 0})
-    if not org:
-        raise HTTPException(404, "Invalid invite code")
-    existing = await db.org_members.find_one({"org_id": org["id"], "user_id": user["id"]})
-    if existing:
+    if not org: raise HTTPException(404, "Invalid invite code")
+    if await db.org_members.find_one({"org_id": org["id"], "user_id": user["id"]}):
         raise HTTPException(400, "Already a member")
-    # validate agent belongs to user
     agent = await db.agents.find_one({"id": req.agent_id, "created_by": user["id"]}, {"_id": 0})
-    if not agent:
-        raise HTTPException(400, "You must bring one of your own agents")
-    member = {
-        "id": gen_id(), "org_id": org["id"],
-        "user_id": user["id"], "role": "member",
-        "brought_agent_id": req.agent_id, "joined_at": now_iso()
-    }
-    await db.org_members.insert_one(member)
-    # move agent to this org
+    if not agent: raise HTTPException(400, "You must bring one of your own agents")
+    mem = {"id": gen_id(), "org_id": org["id"], "user_id": user["id"],
+           "role": "member", "brought_agent_id": req.agent_id, "joined_at": now_iso()}
+    await db.org_members.insert_one(mem)
     await db.agents.update_one({"id": req.agent_id}, {"$set": {"org_id": org["id"]}})
-    # add user to org chart
-    all_nodes = await db.chart_nodes.find({"org_id": org["id"]}).to_list(100)
+    all_nodes = await db.chart_nodes.find({"org_id": org["id"]}).to_list(200)
     ypos = 100 + (len(all_nodes) // 3) * 160
     xpos = 100 + (len(all_nodes) % 3) * 250
     await db.chart_nodes.insert_one({
-        "id": gen_id(), "org_id": org["id"],
-        "node_ref_id": user["id"], "node_type": "user",
-        "manager_id": None, "is_board_member": False,
+        "id": gen_id(), "org_id": org["id"], "node_ref_id": user["id"],
+        "node_type": "user", "manager_id": None, "is_board_member": False,
         "position": {"x": xpos, "y": ypos}, "created_at": now_iso()
     })
+    await event_bus.publish(OrgEvent(
+        event_type="org.member_joined", org_id=org["id"], actor_id=user["id"],
+        payload={"user_name": user["name"], "org_name": org["name"]}
+    ))
     return serialize_doc(org)
 
 @api_router.put("/orgs/{org_id}/members/{member_id}/role")
-async def update_member_role(org_id: str, member_id: str, req: MemberRoleUpdate, user=Depends(get_current_user)):
-    await _assert_role(org_id, user["id"], ["owner"])
+async def update_role(org_id: str, member_id: str, req: MemberRoleUpdate, user=Depends(get_current_user)):
+    await _assert_min_role(org_id, user["id"], "owner")
+    valid_roles = ["owner","board","member","observer"]
+    if req.role not in valid_roles: raise HTTPException(400, f"Role must be one of {valid_roles}")
     await db.org_members.update_one({"id": member_id, "org_id": org_id}, {"$set": {"role": req.role}})
     return {"ok": True}
 
-# ── ③ ORG CHART ──────────────────────────────────────────────────────────
+@api_router.get("/orgs/{org_id}/config")
+async def get_org_config(org_id: str, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    cfg = await db.org_configs.find_one({"org_id": org_id}, {"_id": 0}) or {"org_id": org_id}
+    cfg.pop("openrouter_key", None)  # don't expose key
+    return serialize_doc(cfg)
+
+@api_router.put("/orgs/{org_id}/config")
+async def update_org_config(org_id: str, req: OrgConfigUpdate, user=Depends(get_current_user)):
+    await _assert_min_role(org_id, user["id"], "owner")
+    update = {k: v for k, v in req.model_dump().items() if v is not None}
+    if update:
+        await db.org_configs.update_one({"org_id": org_id}, {"$set": update}, upsert=True)
+    return {"ok": True}
+
+@api_router.get("/orgs/{org_id}/presence")
+async def get_org_presence(org_id: str, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    return get_presence(org_id)
+
+# ════════════════════════════════════════════════════════════════════════════
+# ③ ORG CHART
+# ════════════════════════════════════════════════════════════════════════════
 @api_router.get("/orgs/{org_id}/chart")
 async def get_chart(org_id: str, user=Depends(get_current_user)):
     await _assert_member(org_id, user["id"])
     nodes_raw = await db.chart_nodes.find({"org_id": org_id}, {"_id": 0}).to_list(200)
     nodes = []
     for n in nodes_raw:
-        # enrich with user/agent data
         if n["node_type"] == "user":
             ref = await db.users.find_one({"id": n["node_ref_id"]}, {"_id": 0, "password_hash": 0})
         else:
@@ -351,19 +437,18 @@ async def get_chart(org_id: str, user=Depends(get_current_user)):
 @api_router.put("/orgs/{org_id}/chart/nodes/{node_id}")
 async def update_chart_node(org_id: str, node_id: str, data: dict, user=Depends(get_current_user)):
     await _assert_member(org_id, user["id"])
-    update = {}
-    if "manager_id" in data:
-        update["manager_id"] = data["manager_id"]
-    if "position" in data:
-        update["position"] = data["position"]
-    if "is_board_member" in data:
-        update["is_board_member"] = data["is_board_member"]
+    update = {k: data[k] for k in ("manager_id","position","is_board_member") if k in data}
     if update:
         await db.chart_nodes.update_one({"id": node_id, "org_id": org_id}, {"$set": update})
-    await ws_manager.broadcast(org_id, {"event": "chart_updated", "data": {"node_id": node_id}})
+    await event_bus.publish(OrgEvent(
+        event_type="chart.updated", org_id=org_id, actor_id=user["id"],
+        payload={"node_id": node_id, "changes": list(update.keys())}
+    ))
     return {"ok": True}
 
-# ── ④ AGENTS ─────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════
+# ④ AGENTS
+# ════════════════════════════════════════════════════════════════════════════
 @api_router.get("/orgs/{org_id}/agents")
 async def list_agents(org_id: str, user=Depends(get_current_user)):
     await _assert_member(org_id, user["id"])
@@ -374,74 +459,80 @@ async def list_agents(org_id: str, user=Depends(get_current_user)):
 async def create_agent(org_id: str, req: AgentCreate, user=Depends(get_current_user)):
     await _assert_member(org_id, user["id"])
     agent = {
-        "id": gen_id(), "org_id": org_id,
-        "name": req.name, "role": req.role,
-        "system_prompt": req.system_prompt,
-        "skills": req.skills, "tools": req.tools,
-        "model": req.model, "api_key": None,
-        "status": "idle", "manager_id": None,
-        "is_board_member": False,
-        "created_by": user["id"],
-        "position": {"x": 300, "y": 300},
-        "avatar_color": random.choice(AVATAR_COLORS),
+        "id": gen_id(), "org_id": org_id, "name": req.name, "role": req.role,
+        "system_prompt": req.system_prompt, "skills": req.skills, "tools": req.tools,
+        "model": req.model, "api_key": None, "status": "idle",
+        "manager_id": None, "is_board_member": False, "created_by": user["id"],
+        "position": {"x": 300, "y": 300}, "avatar_color": random.choice(AVATAR_COLORS),
+        "provider_override": req.provider_override, "model_override": req.model_override,
+        # Identity
+        "personality_traits": [], "goals": [], "reputation_score": 5.0,
+        "reputation_history": [], "total_deliberations": 0, "total_votes_influenced": 0,
         "created_at": now_iso()
     }
     await db.agents.insert_one(agent)
-    # add to org chart
+    # Add to org chart
     all_nodes = await db.chart_nodes.find({"org_id": org_id}).to_list(200)
-    ypos = 100 + ((len(all_nodes) // 3) + 1) * 160
-    xpos = 100 + (len(all_nodes) % 3) * 250
-    chart_node = {
-        "id": gen_id(), "org_id": org_id,
-        "node_ref_id": agent["id"], "node_type": "agent",
-        "manager_id": None, "is_board_member": False,
-        "position": {"x": xpos, "y": ypos}, "created_at": now_iso()
-    }
-    await db.chart_nodes.insert_one(chart_node)
+    await db.chart_nodes.insert_one({
+        "id": gen_id(), "org_id": org_id, "node_ref_id": agent["id"],
+        "node_type": "agent", "manager_id": None, "is_board_member": False,
+        "position": {"x": 100 + (len(all_nodes) % 3) * 250, "y": 100 + (len(all_nodes) // 3) * 160},
+        "created_at": now_iso()
+    })
     result = serialize_doc(agent)
-    await ws_manager.broadcast(org_id, {"event": "agent_created", "data": result})
+    await event_bus.publish(OrgEvent(
+        event_type="agent.created", org_id=org_id, actor_id=user["id"],
+        subject_id=agent["id"], subject_type="agent",
+        payload=result
+    ))
     return result
 
 @api_router.get("/agents/{agent_id}")
 async def get_agent(agent_id: str, user=Depends(get_current_user)):
     agent = await db.agents.find_one({"id": agent_id}, {"_id": 0})
-    if not agent:
-        raise HTTPException(404, "Agent not found")
+    if not agent: raise HTTPException(404)
     await _assert_member(agent["org_id"], user["id"])
     return serialize_doc(agent)
 
 @api_router.put("/agents/{agent_id}")
 async def update_agent(agent_id: str, req: AgentUpdate, user=Depends(get_current_user)):
     agent = await db.agents.find_one({"id": agent_id}, {"_id": 0})
-    if not agent:
-        raise HTTPException(404, "Agent not found")
+    if not agent: raise HTTPException(404)
     await _assert_member(agent["org_id"], user["id"])
     update = {k: v for k, v in req.model_dump().items() if v is not None}
     if update:
         await db.agents.update_one({"id": agent_id}, {"$set": update})
-    updated = await db.agents.find_one({"id": agent_id}, {"_id": 0})
-    result = serialize_doc(updated)
-    await ws_manager.broadcast(agent["org_id"], {"event": "agent_updated", "data": result})
-    return result
+    updated = serialize_doc(await db.agents.find_one({"id": agent_id}, {"_id": 0}))
+    await event_bus.publish(OrgEvent(
+        event_type="agent.updated", org_id=agent["org_id"], actor_id=user["id"],
+        subject_id=agent_id, subject_type="agent", payload=updated
+    ))
+    return updated
 
 @api_router.delete("/agents/{agent_id}")
 async def delete_agent(agent_id: str, user=Depends(get_current_user)):
     agent = await db.agents.find_one({"id": agent_id}, {"_id": 0})
-    if not agent:
-        raise HTTPException(404)
+    if not agent: raise HTTPException(404)
     await _assert_member(agent["org_id"], user["id"])
     await db.agents.delete_one({"id": agent_id})
-    await db.chart_nodes.delete_one({"node_ref_id": agent_id, "org_id": agent["org_id"]})
-    await ws_manager.broadcast(agent["org_id"], {"event": "agent_deleted", "data": {"agent_id": agent_id}})
+    await db.chart_nodes.delete_one({"node_ref_id": agent_id})
+    await event_bus.publish(OrgEvent(
+        event_type="agent.deleted", org_id=agent["org_id"], actor_id=user["id"],
+        subject_id=agent_id, payload={"agent_id": agent_id}
+    ))
     return {"ok": True}
 
-# ── ⑤ SKILLS CATALOG ─────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════
+# ⑤ SKILLS
+# ════════════════════════════════════════════════════════════════════════════
 @api_router.get("/skills")
 async def list_skills():
     skills = await db.skills.find({}, {"_id": 0}).to_list(100)
     return [serialize_doc(s) for s in skills]
 
-# ── ⑥ BOARD / PROPOSALS ──────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════
+# ⑥ BOARD / PROPOSALS
+# ════════════════════════════════════════════════════════════════════════════
 @api_router.get("/orgs/{org_id}/proposals")
 async def list_proposals(org_id: str, user=Depends(get_current_user)):
     await _assert_member(org_id, user["id"])
@@ -449,98 +540,218 @@ async def list_proposals(org_id: str, user=Depends(get_current_user)):
     result = []
     for p in proposals:
         p = serialize_doc(p)
-        p["votes"] = await _get_proposal_votes(p["id"])
+        p["votes"]         = await _get_votes(p["id"])
         p["comment_count"] = await db.comments.count_documents({"proposal_id": p["id"]})
+        p["has_deliberation"] = bool(await db.deliberations.find_one({"proposal_id": p["id"]}))
         result.append(p)
     return result
 
 @api_router.post("/orgs/{org_id}/proposals")
 async def create_proposal(org_id: str, req: ProposalCreate, user=Depends(get_current_user)):
-    await _assert_member(org_id, user["id"])
+    await _assert_min_role(org_id, user["id"], "member")
     proposal = {
-        "id": gen_id(), "org_id": org_id,
-        "title": req.title, "description": req.description,
-        "author_id": user["id"], "author_type": "user",
-        "author_name": user["name"],
-        "status": "open",
-        "workflow_id": req.workflow_id,
-        "voting_type": req.voting_type,
+        "id": gen_id(), "org_id": org_id, "title": req.title, "description": req.description,
+        "author_id": user["id"], "author_type": "user", "author_name": user["name"],
+        "status": "open", "workflow_id": req.workflow_id, "voting_type": req.voting_type,
         "created_at": now_iso()
     }
     await db.proposals.insert_one(proposal)
     result = serialize_doc(proposal)
-    result["votes"] = []
-    result["comment_count"] = 0
-    await ws_manager.broadcast(org_id, {"event": "proposal_created", "data": result})
+    result["votes"] = []; result["comment_count"] = 0; result["has_deliberation"] = False
+    await event_bus.publish(OrgEvent(
+        event_type="board.proposal_created", org_id=org_id, actor_id=user["id"],
+        subject_id=proposal["id"], subject_type="proposal", payload=result
+    ))
+    await _create_notification_for_event("board.proposal_created", org_id, user["id"], proposal)
     return result
 
 @api_router.get("/proposals/{proposal_id}")
 async def get_proposal(proposal_id: str, user=Depends(get_current_user)):
     p = await db.proposals.find_one({"id": proposal_id}, {"_id": 0})
-    if not p:
-        raise HTTPException(404)
+    if not p: raise HTTPException(404)
     await _assert_member(p["org_id"], user["id"])
     p = serialize_doc(p)
-    p["votes"] = await _get_proposal_votes(proposal_id)
-    comments = await db.comments.find({"proposal_id": proposal_id}, {"_id": 0}).sort("created_at", 1).to_list(200)
+    p["votes"]    = await _get_votes(proposal_id)
+    comments      = await db.comments.find({"proposal_id": proposal_id}, {"_id": 0}).sort("created_at", 1).to_list(200)
     p["comments"] = [serialize_doc(c) for c in comments]
+    delib_doc     = await db.deliberations.find_one({"proposal_id": proposal_id}, {"_id": 0})
+    p["deliberation"] = serialize_doc(delib_doc) if delib_doc else None
     return p
 
 @api_router.post("/proposals/{proposal_id}/vote")
-async def cast_vote(proposal_id: str, req: VoteRequest, user=Depends(get_current_user)):
+async def cast_vote(proposal_id: str, req: VoteReq, user=Depends(get_current_user)):
     proposal = await db.proposals.find_one({"id": proposal_id}, {"_id": 0})
-    if not proposal:
-        raise HTTPException(404)
-    if proposal["status"] != "open":
-        raise HTTPException(400, "Proposal is not open for voting")
-    await _assert_member(proposal["org_id"], user["id"])
-    # check if already voted
+    if not proposal: raise HTTPException(404)
+    if proposal["status"] != "open": raise HTTPException(400, "Proposal not open")
+    role = await _assert_member(proposal["org_id"], user["id"])
     existing = await db.votes.find_one({"proposal_id": proposal_id, "voter_id": user["id"]})
+    weight = 2.0 if role in ("owner","board") else 1.0
     if existing:
-        # update vote
-        await db.votes.update_one({"proposal_id": proposal_id, "voter_id": user["id"]},
-                                   {"$set": {"value": req.value, "updated_at": now_iso()}})
+        await db.votes.update_one(
+            {"proposal_id": proposal_id, "voter_id": user["id"]},
+            {"$set": {"value": req.value, "updated_at": now_iso()}}
+        )
     else:
-        # check if board member for weight
-        mem = await db.org_members.find_one({"org_id": proposal["org_id"], "user_id": user["id"]})
-        weight = 2.0 if mem and mem.get("role") == "board" else 1.0
-        vote = {
+        await db.votes.insert_one({
             "id": gen_id(), "proposal_id": proposal_id,
             "voter_id": user["id"], "voter_name": user["name"],
             "voter_type": "user", "value": req.value,
             "weight": weight, "created_at": now_iso()
-        }
-        await db.votes.insert_one(vote)
-    # check if vote threshold met
+        })
     await _check_proposal_outcome(proposal, user)
-    votes = await _get_proposal_votes(proposal_id)
-    updated_proposal = await db.proposals.find_one({"id": proposal_id}, {"_id": 0})
-    await ws_manager.broadcast(proposal["org_id"], {
-        "event": "vote_cast",
-        "data": {"proposal_id": proposal_id, "voter": user["name"],
-                 "value": req.value, "votes": votes,
-                 "status": updated_proposal.get("status")}
-    })
+    votes = await _get_votes(proposal_id)
+    updated = await db.proposals.find_one({"id": proposal_id}, {"_id": 0})
+    await event_bus.publish(OrgEvent(
+        event_type="board.vote_cast", org_id=proposal["org_id"], actor_id=user["id"],
+        subject_id=proposal_id, subject_type="proposal",
+        payload={"proposal_id": proposal_id, "voter": user["name"],
+                 "value": req.value, "votes": votes, "status": updated.get("status")}
+    ))
+    await _update_agent_reputation_on_vote(proposal["org_id"], proposal_id)
     return {"ok": True, "votes": votes}
 
 @api_router.post("/proposals/{proposal_id}/comments")
 async def add_comment(proposal_id: str, req: CommentCreate, user=Depends(get_current_user)):
     proposal = await db.proposals.find_one({"id": proposal_id}, {"_id": 0})
-    if not proposal:
-        raise HTTPException(404)
+    if not proposal: raise HTTPException(404)
     await _assert_member(proposal["org_id"], user["id"])
     comment = {
         "id": gen_id(), "proposal_id": proposal_id,
         "author_id": user["id"], "author_name": user["name"],
-        "author_type": "user", "text": req.text,
-        "created_at": now_iso()
+        "author_type": "user", "text": req.text, "created_at": now_iso()
     }
     await db.comments.insert_one(comment)
     result = serialize_doc(comment)
-    await ws_manager.broadcast(proposal["org_id"], {"event": "comment_added", "data": result})
+    await event_bus.publish(OrgEvent(
+        event_type="board.comment_added", org_id=proposal["org_id"], actor_id=user["id"],
+        subject_id=proposal_id, subject_type="proposal", payload=result
+    ))
     return result
 
-# ── ⑦ WORKFLOWS ──────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════
+# ⑦ DELIBERATION ENGINE
+# ════════════════════════════════════════════════════════════════════════════
+@api_router.post("/orgs/{org_id}/deliberations")
+async def start_deliberation(org_id: str, req: DeliberationStart, user=Depends(get_current_user)):
+    await _assert_min_role(org_id, user["id"], "member")
+    proposal = await db.proposals.find_one({"id": req.proposal_id, "org_id": org_id}, {"_id": 0})
+    if not proposal: raise HTTPException(404, "Proposal not found")
+    # Get board agents for deliberation
+    agents = await db.agents.find({"org_id": org_id}, {"_id": 0}).to_list(10)
+    if not agents:
+        raise HTTPException(400, "No agents in this org to deliberate")
+    org_config = await _get_org_config(org_id)
+    # Create deliberation record
+    delib_id = gen_id()
+    delib_doc = {
+        "id": delib_id, "org_id": org_id, "proposal_id": req.proposal_id,
+        "proposal_title": proposal["title"], "status": "running",
+        "snapshots": [], "summary": None,
+        "started_by": user["id"], "started_at": now_iso(), "completed_at": None
+    }
+    await db.deliberations.insert_one(delib_doc)
+    await event_bus.publish(OrgEvent(
+        event_type="deliberation.started", org_id=org_id, actor_id=user["id"],
+        subject_id=delib_id, subject_type="deliberation",
+        payload={"delib_id": delib_id, "proposal_title": proposal["title"],
+                 "agent_count": len(agents)}
+    ))
+    # Run deliberation asynchronously
+    asyncio.create_task(_run_deliberation(delib_id, org_id, proposal, agents, req.rounds, org_config))
+    return {"delib_id": delib_id, "status": "running", "agent_count": len(agents)}
+
+@api_router.get("/deliberations/{delib_id}")
+async def get_deliberation(delib_id: str, user=Depends(get_current_user)):
+    d = await db.deliberations.find_one({"id": delib_id}, {"_id": 0})
+    if not d: raise HTTPException(404)
+    await _assert_member(d["org_id"], user["id"])
+    return serialize_doc(d)
+
+@api_router.get("/orgs/{org_id}/deliberations")
+async def list_deliberations(org_id: str, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    docs = await db.deliberations.find({"org_id": org_id}, {"_id": 0}).sort("started_at", -1).to_list(50)
+    return [serialize_doc(d) for d in docs]
+
+async def _run_deliberation(delib_id: str, org_id: str, proposal: dict, agents: list, rounds: int, org_config: dict):
+    snapshots = []
+    try:
+        for round_num in range(1, rounds + 1):
+            for agent in agents:
+                # Signal agent is "thinking"
+                await event_bus.publish(OrgEvent(
+                    event_type="deliberation.agent_thinking", org_id=org_id,
+                    actor_id=agent["id"], subject_id=delib_id,
+                    payload={"agent_id": agent["id"], "agent_name": agent["name"],
+                             "delib_id": delib_id, "round": round_num}
+                ), persist=False)
+                # Update presence: agent is thinking
+                presence.setdefault(org_id, {})[f"agent_{agent['id']}"] = {
+                    "user_id": agent["id"], "name": agent["name"],
+                    "avatar_color": agent.get("avatar_color","#a78bfa"),
+                    "status": "online", "typing_in": "", "thinking": True,
+                    "last_seen": now_iso(), "is_agent": True
+                }
+                # Generate snapshot
+                snapshot = await delib.generate_agent_snapshot(
+                    agent=agent,
+                    proposal_title=proposal["title"],
+                    proposal_description=proposal.get("description",""),
+                    prior_snapshots=snapshots,
+                    round_num=round_num,
+                    org_config=org_config
+                )
+                snapshots.append(snapshot)
+                # Clear thinking presence
+                presence.setdefault(org_id, {})[f"agent_{agent['id']}"]["thinking"] = False
+                # Update DB + broadcast snapshot
+                await db.deliberations.update_one(
+                    {"id": delib_id},
+                    {"$push": {"snapshots": snapshot}}
+                )
+                await event_bus.publish(OrgEvent(
+                    event_type="deliberation.snapshot", org_id=org_id,
+                    actor_id=agent["id"], subject_id=delib_id,
+                    payload={"delib_id": delib_id, "snapshot": snapshot}
+                ))
+                # Update agent reputation
+                await db.agents.update_one(
+                    {"id": agent["id"]},
+                    {"$inc": {"total_deliberations": 1}}
+                )
+                await asyncio.sleep(0.5)  # pacing
+
+        # Generate summary
+        summary = await delib.generate_deliberation_summary(
+            proposal["title"], snapshots, org_config
+        )
+        await db.deliberations.update_one(
+            {"id": delib_id},
+            {"$set": {"status": "completed", "summary": summary, "completed_at": now_iso()}}
+        )
+        await event_bus.publish(OrgEvent(
+            event_type="deliberation.completed", org_id=org_id,
+            actor_id="system", subject_id=delib_id,
+            payload={"delib_id": delib_id, "summary": summary,
+                     "snapshot_count": len(snapshots)}
+        ))
+        # Create memory nodes from deliberation
+        await _create_memory_from_deliberation(org_id, proposal, snapshots, summary)
+        # Create notification
+        await _create_notif(
+            org_id=org_id, user_id=None,  # all board members
+            notif_type="deliberation_complete",
+            title=f"Deliberation complete: {proposal['title']}",
+            body=f"Outcome: {summary.get('outcome','unknown')}. {summary.get('consensus','')}",
+            link=f"/board",
+        )
+    except Exception as e:
+        logger.error(f"Deliberation error: {e}")
+        await db.deliberations.update_one({"id": delib_id}, {"$set": {"status": "failed", "error": str(e)}})
+
+# ════════════════════════════════════════════════════════════════════════════
+# ⑧ WORKFLOWS
+# ════════════════════════════════════════════════════════════════════════════
 @api_router.get("/orgs/{org_id}/workflows")
 async def list_workflows(org_id: str, user=Depends(get_current_user)):
     await _assert_member(org_id, user["id"])
@@ -554,46 +765,42 @@ async def list_workflows(org_id: str, user=Depends(get_current_user)):
 
 @api_router.post("/orgs/{org_id}/workflows")
 async def create_workflow(org_id: str, req: WorkflowCreate, user=Depends(get_current_user)):
-    await _assert_member(org_id, user["id"])
-    # default starter nodes
+    await _assert_min_role(org_id, user["id"], "member")
     default_nodes = req.nodes or [
         {"id": "trigger-1", "type": "trigger", "position": {"x": 250, "y": 80},
-         "data": {"label": "Manual Trigger", "trigger_type": "manual", "status": "idle"}},
+         "data": {"label": "Manual Trigger", "nodeType": "trigger", "trigger_type": "manual", "status": "idle"}},
         {"id": "step-1", "type": "step", "position": {"x": 250, "y": 220},
-         "data": {"label": "Step 1", "action": "analyze", "agent": None, "status": "idle"}},
+         "data": {"label": "Step 1", "nodeType": "step", "action": "analyze", "agent": None, "status": "idle"}},
         {"id": "output-1", "type": "output", "position": {"x": 250, "y": 360},
-         "data": {"label": "Output", "status": "idle"}}
+         "data": {"label": "Output", "nodeType": "output", "status": "idle"}}
     ]
     default_edges = req.edges or [
-        {"id": "e-t1-s1", "source": "trigger-1", "target": "step-1"},
-        {"id": "e-s1-o1", "source": "step-1", "target": "output-1"}
+        {"id": "e-t1-s1", "source": "trigger-1", "target": "step-1", "style": {"stroke": "rgba(34,211,238,0.4)", "strokeWidth": 2}},
+        {"id": "e-s1-o1", "source": "step-1", "target": "output-1", "style": {"stroke": "rgba(34,211,238,0.4)", "strokeWidth": 2}}
     ]
     workflow = {
-        "id": gen_id(), "org_id": org_id,
-        "name": req.name, "description": req.description,
-        "trigger_type": req.trigger_type,
-        "nodes": default_nodes,
-        "edges": default_edges,
-        "status": "active",
-        "created_by": user["id"],
-        "created_at": now_iso()
+        "id": gen_id(), "org_id": org_id, "name": req.name, "description": req.description,
+        "trigger_type": req.trigger_type, "nodes": default_nodes, "edges": default_edges,
+        "status": "active", "created_by": user["id"], "created_at": now_iso()
     }
     await db.workflows.insert_one(workflow)
+    await event_bus.publish(OrgEvent(
+        event_type="workflow.created", org_id=org_id, actor_id=user["id"],
+        subject_id=workflow["id"], payload={"name": workflow["name"]}
+    ))
     return serialize_doc(workflow)
 
 @api_router.get("/workflows/{workflow_id}")
 async def get_workflow(workflow_id: str, user=Depends(get_current_user)):
     w = await db.workflows.find_one({"id": workflow_id}, {"_id": 0})
-    if not w:
-        raise HTTPException(404)
+    if not w: raise HTTPException(404)
     await _assert_member(w["org_id"], user["id"])
     return serialize_doc(w)
 
 @api_router.put("/workflows/{workflow_id}")
 async def update_workflow(workflow_id: str, req: WorkflowUpdate, user=Depends(get_current_user)):
     w = await db.workflows.find_one({"id": workflow_id}, {"_id": 0})
-    if not w:
-        raise HTTPException(404)
+    if not w: raise HTTPException(404)
     await _assert_member(w["org_id"], user["id"])
     update = {k: v for k, v in req.model_dump().items() if v is not None}
     if update:
@@ -604,24 +811,20 @@ async def update_workflow(workflow_id: str, req: WorkflowUpdate, user=Depends(ge
 @api_router.delete("/workflows/{workflow_id}")
 async def delete_workflow(workflow_id: str, user=Depends(get_current_user)):
     w = await db.workflows.find_one({"id": workflow_id}, {"_id": 0})
-    if not w:
-        raise HTTPException(404)
-    await _assert_role(w["org_id"], user["id"], ["owner", "member"])
+    if not w: raise HTTPException(404)
+    await _assert_member(w["org_id"], user["id"])
     await db.workflows.delete_one({"id": workflow_id})
     return {"ok": True}
 
 @api_router.post("/workflows/{workflow_id}/run")
 async def run_workflow(workflow_id: str, user=Depends(get_current_user)):
     w = await db.workflows.find_one({"id": workflow_id}, {"_id": 0})
-    if not w:
-        raise HTTPException(404)
+    if not w: raise HTTPException(404)
     await _assert_member(w["org_id"], user["id"])
     run = {
         "id": gen_id(), "workflow_id": workflow_id, "org_id": w["org_id"],
         "triggered_by": user["id"], "trigger_type": "manual",
-        "status": "running",
-        "step_states": {},
-        "started_at": now_iso(), "completed_at": None
+        "status": "running", "step_states": {}, "started_at": now_iso(), "completed_at": None
     }
     await db.workflow_runs.insert_one(run)
     asyncio.create_task(_execute_workflow(w, run))
@@ -630,8 +833,7 @@ async def run_workflow(workflow_id: str, user=Depends(get_current_user)):
 @api_router.get("/workflow-runs/{run_id}")
 async def get_run(run_id: str, user=Depends(get_current_user)):
     run = await db.workflow_runs.find_one({"id": run_id}, {"_id": 0})
-    if not run:
-        raise HTTPException(404)
+    if not run: raise HTTPException(404)
     await _assert_member(run["org_id"], user["id"])
     return serialize_doc(run)
 
@@ -641,37 +843,32 @@ async def list_runs(org_id: str, user=Depends(get_current_user)):
     runs = await db.workflow_runs.find({"org_id": org_id}, {"_id": 0}).sort("started_at", -1).to_list(50)
     return [serialize_doc(r) for r in runs]
 
-# ── ⑧ MESSAGING ──────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════
+# ⑨ MESSAGING
+# ════════════════════════════════════════════════════════════════════════════
 @api_router.get("/orgs/{org_id}/threads")
 async def list_threads(org_id: str, user=Depends(get_current_user)):
     await _assert_member(org_id, user["id"])
     threads = await db.threads.find(
-        {"org_id": org_id, "participants.id": user["id"]},
-        {"_id": 0}
+        {"org_id": org_id, "participants.id": user["id"]}, {"_id": 0}
     ).sort("last_message_at", -1).to_list(100)
     result = []
     for t in threads:
         t = serialize_doc(t)
-        last_msg = await db.messages.find_one(
-            {"thread_id": t["id"]}, {"_id": 0},
-            sort=[("created_at", -1)]
-        )
+        last_msg = await db.messages.find_one({"thread_id": t["id"]}, {"_id": 0}, sort=[("created_at",-1)])
         t["last_message"] = serialize_doc(last_msg) if last_msg else None
-        t["unread"] = 0  # simplified
         result.append(t)
     return result
 
 @api_router.post("/orgs/{org_id}/threads")
 async def create_thread(org_id: str, req: ThreadCreate, user=Depends(get_current_user)):
     await _assert_member(org_id, user["id"])
-    # ensure user is in participants
     participants = req.participants
     if not any(p.get("id") == user["id"] for p in participants):
         participants.append({"id": user["id"], "type": "user", "name": user["name"]})
     thread = {
-        "id": gen_id(), "org_id": org_id,
-        "title": req.title, "participants": participants,
-        "created_at": now_iso(), "last_message_at": now_iso()
+        "id": gen_id(), "org_id": org_id, "title": req.title,
+        "participants": participants, "created_at": now_iso(), "last_message_at": now_iso()
     }
     await db.threads.insert_one(thread)
     result = serialize_doc(thread)
@@ -681,8 +878,7 @@ async def create_thread(org_id: str, req: ThreadCreate, user=Depends(get_current
 @api_router.get("/threads/{thread_id}/messages")
 async def list_messages(thread_id: str, user=Depends(get_current_user)):
     thread = await db.threads.find_one({"id": thread_id}, {"_id": 0})
-    if not thread:
-        raise HTTPException(404)
+    if not thread: raise HTTPException(404)
     await _assert_member(thread["org_id"], user["id"])
     msgs = await db.messages.find({"thread_id": thread_id}, {"_id": 0}).sort("created_at", 1).to_list(500)
     return [serialize_doc(m) for m in msgs]
@@ -690,96 +886,235 @@ async def list_messages(thread_id: str, user=Depends(get_current_user)):
 @api_router.post("/threads/{thread_id}/messages")
 async def send_message(thread_id: str, req: MessageCreate, user=Depends(get_current_user)):
     thread = await db.threads.find_one({"id": thread_id}, {"_id": 0})
-    if not thread:
-        raise HTTPException(404)
+    if not thread: raise HTTPException(404)
     await _assert_member(thread["org_id"], user["id"])
     msg = {
         "id": gen_id(), "thread_id": thread_id,
         "sender_id": user["id"], "sender_name": user["name"],
-        "sender_type": "user", "text": req.text,
-        "created_at": now_iso()
+        "sender_type": "user", "text": req.text, "created_at": now_iso()
     }
     await db.messages.insert_one(msg)
     await db.threads.update_one({"id": thread_id}, {"$set": {"last_message_at": now_iso()}})
     result = serialize_doc(msg)
-    await ws_manager.broadcast(thread["org_id"], {"event": "message_created", "data": result})
+    await event_bus.publish(OrgEvent(
+        event_type="message.created", org_id=thread["org_id"], actor_id=user["id"],
+        subject_id=thread_id, subject_type="thread", payload=result
+    ))
     return result
 
-# ── ⑨ DASHBOARD / ACTIVITY ───────────────────────────────────────────────
+@api_router.post("/threads/{thread_id}/typing")
+async def typing_indicator(thread_id: str, user=Depends(get_current_user)):
+    thread = await db.threads.find_one({"id": thread_id}, {"_id": 0})
+    if not thread: raise HTTPException(404)
+    await update_presence(
+        thread["org_id"], user["id"], user["name"],
+        user.get("avatar_color","#22d3ee"),
+        typing_in=thread_id
+    )
+    return {"ok": True}
+
+# ════════════════════════════════════════════════════════════════════════════
+# ⑩ NOTIFICATIONS
+# ════════════════════════════════════════════════════════════════════════════
+@api_router.get("/orgs/{org_id}/notifications")
+async def list_notifications(org_id: str, unread_only: bool = False, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    query = {"org_id": org_id, "$or": [{"user_id": user["id"]}, {"user_id": None}]}
+    if unread_only:
+        query["read_at"] = None
+    notifs = await db.notifications.find(query, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return [serialize_doc(n) for n in notifs]
+
+@api_router.post("/orgs/{org_id}/notifications/read")
+async def mark_notifications_read(org_id: str, req: NotifMarkRead, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    if req.notification_ids:
+        await db.notifications.update_many(
+            {"id": {"$in": req.notification_ids}, "org_id": org_id},
+            {"$set": {"read_at": now_iso()}}
+        )
+    else:
+        # mark all as read for this user
+        await db.notifications.update_many(
+            {"org_id": org_id, "$or": [{"user_id": user["id"]}, {"user_id": None}], "read_at": None},
+            {"$set": {"read_at": now_iso()}}
+        )
+    return {"ok": True}
+
+@api_router.get("/orgs/{org_id}/notifications/count")
+async def notif_count(org_id: str, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    count = await db.notifications.count_documents({
+        "org_id": org_id,
+        "$or": [{"user_id": user["id"]}, {"user_id": None}],
+        "read_at": None
+    })
+    return {"unread": count}
+
+# ════════════════════════════════════════════════════════════════════════════
+# ⑪ MEMORY GRAPH
+# ════════════════════════════════════════════════════════════════════════════
+@api_router.get("/orgs/{org_id}/memory/nodes")
+async def list_memory_nodes(org_id: str, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    nodes = await db.memory_nodes.find({"org_id": org_id}, {"_id": 0}).to_list(500)
+    return [serialize_doc(n) for n in nodes]
+
+@api_router.get("/orgs/{org_id}/memory/edges")
+async def list_memory_edges(org_id: str, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    edges = await db.memory_edges.find({"org_id": org_id}, {"_id": 0}).to_list(500)
+    return [serialize_doc(e) for e in edges]
+
+@api_router.post("/orgs/{org_id}/memory/nodes")
+async def create_memory_node(org_id: str, req: MemoryNodeCreate, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    node = {
+        "id": gen_id(), "org_id": org_id, "entity_type": req.entity_type,
+        "name": req.name, "description": req.description, "metadata": req.metadata,
+        "confidence": 1.0, "influence_score": 0.0, "mention_count": 1,
+        "created_by": user["id"], "created_at": now_iso(), "updated_at": now_iso()
+    }
+    await db.memory_nodes.insert_one(node)
+    result = serialize_doc(node)
+    await event_bus.publish(OrgEvent(
+        event_type="memory.node_created", org_id=org_id, actor_id=user["id"],
+        subject_id=node["id"], payload=result
+    ))
+    return result
+
+@api_router.post("/orgs/{org_id}/memory/edges")
+async def create_memory_edge(org_id: str, req: MemoryEdgeCreate, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    edge = {
+        "id": gen_id(), "org_id": org_id, "source_id": req.source_id,
+        "target_id": req.target_id, "edge_type": req.edge_type,
+        "weight": req.weight, "metadata": req.metadata, "created_at": now_iso()
+    }
+    await db.memory_edges.insert_one(edge)
+    # Update influence score of source node
+    await db.memory_nodes.update_one(
+        {"id": req.source_id}, {"$inc": {"influence_score": req.weight}}
+    )
+    return serialize_doc(edge)
+
+# ════════════════════════════════════════════════════════════════════════════
+# ⑫ SYSTEM HEALTH
+# ════════════════════════════════════════════════════════════════════════════
+@api_router.get("/orgs/{org_id}/health")
+async def system_health(org_id: str, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    provider_health = prov.get_provider_health()
+    ws_connections  = ws_manager.room_size(org_id)
+    online_users    = len(get_presence(org_id))
+    total_agents    = await db.agents.count_documents({"org_id": org_id})
+    total_workflows = await db.workflows.count_documents({"org_id": org_id})
+    total_delibs    = await db.deliberations.count_documents({"org_id": org_id})
+    memory_nodes    = await db.memory_nodes.count_documents({"org_id": org_id})
+    events_today    = await db.events.count_documents({
+        "org_id": org_id,
+        "created_at": {"$gte": datetime.now(timezone.utc).replace(hour=0, minute=0, second=0).isoformat()}
+    })
+    return {
+        "providers": provider_health,
+        "connections": {"ws": ws_connections, "online_users": online_users},
+        "org_stats": {
+            "total_agents": total_agents,
+            "total_workflows": total_workflows,
+            "total_deliberations": total_delibs,
+            "memory_nodes": memory_nodes,
+            "events_today": events_today,
+        },
+        "models": {
+            "routing": {k: {"provider": v[0], "model": v[1]} for k, v in prov.ROUTE_TABLE.items()},
+        }
+    }
+
+# ════════════════════════════════════════════════════════════════════════════
+# ⑬ EVENTS LOG
+# ════════════════════════════════════════════════════════════════════════════
+@api_router.get("/orgs/{org_id}/events")
+async def get_events(org_id: str, limit: int = 50, event_type: str = None, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    docs = await event_bus.recent(org_id, limit=min(limit,100), event_type=event_type)
+    return [serialize_doc(d) for d in docs]
+
+# ════════════════════════════════════════════════════════════════════════════
+# ⑭ DASHBOARD
+# ════════════════════════════════════════════════════════════════════════════
 @api_router.get("/orgs/{org_id}/activity")
 async def get_activity(org_id: str, user=Depends(get_current_user)):
     await _assert_member(org_id, user["id"])
-    # recent proposals
-    proposals = await db.proposals.find({"org_id": org_id}, {"_id": 0}).sort("created_at", -1).limit(5).to_list(5)
-    # recent messages
-    msgs = await db.messages.find(
-        {"thread_id": {"$in": [t["id"] async for t in db.threads.find({"org_id": org_id}, {"id": 1, "_id": 0})]}},
-        {"_id": 0}
-    ).sort("created_at", -1).limit(5).to_list(5)
-    # recent runs
-    runs = await db.workflow_runs.find({"org_id": org_id}, {"_id": 0}).sort("started_at", -1).limit(5).to_list(5)
-    activities = []
-    for p in proposals:
-        activities.append({"type": "proposal", "title": f"Proposal: {p['title']}", "time": p.get("created_at"), "status": p.get("status")})
-    for m in msgs:
-        activities.append({"type": "message", "title": f"{m.get('sender_name','?')}: {m['text'][:50]}", "time": m.get("created_at")})
-    for r in runs:
-        activities.append({"type": "workflow_run", "title": f"Workflow run {r['status']}", "time": r.get("started_at"), "status": r.get("status")})
-    activities.sort(key=lambda x: x.get("time") or "", reverse=True)
-    return activities[:15]
+    events = await event_bus.recent(org_id, limit=20)
+    return events
 
 @api_router.get("/orgs/{org_id}/stats")
 async def get_stats(org_id: str, user=Depends(get_current_user)):
     await _assert_member(org_id, user["id"])
+    thread_ids = [t["id"] async for t in db.threads.find({"org_id": org_id}, {"id": 1, "_id": 0})]
     return {
         "members": await db.org_members.count_documents({"org_id": org_id}),
         "agents": await db.agents.count_documents({"org_id": org_id}),
         "open_proposals": await db.proposals.count_documents({"org_id": org_id, "status": "open"}),
         "workflows": await db.workflows.count_documents({"org_id": org_id}),
         "active_runs": await db.workflow_runs.count_documents({"org_id": org_id, "status": "running"}),
-        "total_messages": await db.messages.count_documents(
-            {"thread_id": {"$in": [t["id"] async for t in db.threads.find({"org_id": org_id}, {"id": 1, "_id": 0})]}}
-        ),
+        "total_messages": await db.messages.count_documents({"thread_id": {"$in": thread_ids}}),
+        "deliberations": await db.deliberations.count_documents({"org_id": org_id}),
+        "memory_nodes": await db.memory_nodes.count_documents({"org_id": org_id}),
+        "unread_notifs": await db.notifications.count_documents({
+            "org_id": org_id, "$or": [{"user_id": user["id"]},{"user_id": None}], "read_at": None
+        }),
     }
 
-# ── WebSocket ─────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════
+# WebSocket endpoint
+# ════════════════════════════════════════════════════════════════════════════
 @app.websocket("/ws/org/{org_id}")
 async def ws_endpoint(ws: WebSocket, org_id: str, token: str = None):
-    # validate token
-    user_id = None
+    user_id, user_name, avatar_color = "", "", ""
     if token:
         try:
             payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            user_id = payload.get("sub")
+            uid = payload.get("sub")
+            u = await db.users.find_one({"id": uid}, {"_id": 0})
+            if u:
+                user_id     = u["id"]
+                user_name   = u["name"]
+                avatar_color = u.get("avatar_color","#22d3ee")
         except Exception:
             pass
     client_id = user_id or str(uuid.uuid4())[:8]
-    await ws_manager.connect(org_id, ws, client_id)
+    await ws_manager.connect(org_id, ws, client_id, user_id)
     await ws.send_text(json.dumps({"event": "connected", "data": {"client_id": client_id, "org_id": org_id}}))
+    # Announce presence
+    if user_id:
+        await update_presence(org_id, user_id, user_name, avatar_color, "online")
     try:
         while True:
             raw = await ws.receive_text()
             try:
                 data = json.loads(raw)
-                if data.get("type") == "ping":
+                etype = data.get("type")
+                if etype == "ping":
                     await ws.send_text(json.dumps({"event": "pong"}))
+                    if user_id:
+                        await update_presence(org_id, user_id, user_name, avatar_color, "online",
+                                              data.get("typing_in",""), data.get("thinking", False))
+                elif etype == "presence":
+                    await update_presence(org_id, user_id, user_name, avatar_color,
+                                          data.get("status","online"),
+                                          data.get("typing_in",""), data.get("thinking",False))
             except Exception:
                 pass
     except WebSocketDisconnect:
         ws_manager.disconnect(org_id, ws)
+        if user_id:
+            await update_presence(org_id, user_id, user_name, avatar_color, "offline")
 
-# ── Internal Helpers ──────────────────────────────────────────────────────
-async def _assert_member(org_id: str, user_id: str):
-    m = await db.org_members.find_one({"org_id": org_id, "user_id": user_id})
-    if not m:
-        raise HTTPException(403, "Not a member of this org")
-
-async def _assert_role(org_id: str, user_id: str, roles: list):
-    m = await db.org_members.find_one({"org_id": org_id, "user_id": user_id})
-    if not m or m.get("role") not in roles:
-        raise HTTPException(403, "Insufficient permissions")
-
-async def _get_proposal_votes(proposal_id: str) -> list:
+# ════════════════════════════════════════════════════════════════════════════
+# Internal helpers
+# ════════════════════════════════════════════════════════════════════════════
+async def _get_votes(proposal_id: str) -> list:
     votes = await db.votes.find({"proposal_id": proposal_id}, {"_id": 0}).to_list(200)
     return [serialize_doc(v) for v in votes]
 
@@ -787,122 +1122,190 @@ async def _check_proposal_outcome(proposal: dict, user: dict):
     org_id = proposal["org_id"]
     member_count = await db.org_members.count_documents({"org_id": org_id})
     votes = await db.votes.find({"proposal_id": proposal["id"]}, {"_id": 0}).to_list(200)
-    approve_weight = sum(v.get("weight", 1) for v in votes if v["value"] == "approve")
-    reject_weight  = sum(v.get("weight", 1) for v in votes if v["value"] == "reject")
-    total_weight   = approve_weight + reject_weight
-    # Simple majority check (>50% of members voted + majority approve)
+    approve_w = sum(v.get("weight",1) for v in votes if v["value"] == "approve")
+    reject_w  = sum(v.get("weight",1) for v in votes if v["value"] == "reject")
     if len(votes) >= max(1, member_count // 2):
-        if approve_weight > reject_weight:
+        if approve_w > reject_w:
             await db.proposals.update_one({"id": proposal["id"]}, {"$set": {"status": "approved"}})
-            await ws_manager.broadcast(org_id, {
-                "event": "proposal_approved",
-                "data": {"proposal_id": proposal["id"], "title": proposal["title"]}
-            })
-            # trigger linked workflow if any
+            await event_bus.publish(OrgEvent(
+                event_type="board.proposal_approved", org_id=org_id, actor_id=user["id"],
+                subject_id=proposal["id"], payload={"proposal_id": proposal["id"], "title": proposal["title"]}
+            ))
+            await _create_notif(org_id, None, "proposal_approved",
+                f"✅ Proposal approved: {proposal['title']}", "The proposal passed majority vote.", "/board")
             if proposal.get("workflow_id"):
                 w = await db.workflows.find_one({"id": proposal["workflow_id"]}, {"_id": 0})
                 if w:
                     run = {
                         "id": gen_id(), "workflow_id": w["id"], "org_id": org_id,
                         "triggered_by": proposal["id"], "trigger_type": "vote_passed",
-                        "status": "running", "step_states": {},
-                        "started_at": now_iso(), "completed_at": None
+                        "status": "running", "step_states": {}, "started_at": now_iso(), "completed_at": None
                     }
                     await db.workflow_runs.insert_one(run)
                     asyncio.create_task(_execute_workflow(w, run))
-        elif reject_weight > approve_weight:
+        elif reject_w > approve_w:
             await db.proposals.update_one({"id": proposal["id"]}, {"$set": {"status": "rejected"}})
-            await ws_manager.broadcast(org_id, {
-                "event": "proposal_rejected",
-                "data": {"proposal_id": proposal["id"]}
-            })
+            await event_bus.publish(OrgEvent(
+                event_type="board.proposal_rejected", org_id=org_id, actor_id=user["id"],
+                subject_id=proposal["id"], payload={"proposal_id": proposal["id"]}
+            ))
 
 async def _execute_workflow(workflow: dict, run: dict):
     org_id = run["org_id"]
     run_id = run["id"]
     nodes  = workflow.get("nodes", [])
     edges  = workflow.get("edges", [])
-    await ws_manager.broadcast(org_id, {
-        "event": "workflow_run_started",
-        "data": {"run_id": run_id, "workflow_name": workflow["name"]}
-    })
-    # topological sort
+    await event_bus.publish(OrgEvent(
+        event_type="workflow.run_started", org_id=org_id, actor_id="system",
+        subject_id=run_id,
+        payload={"run_id": run_id, "workflow_name": workflow["name"]}
+    ))
     order = _topo_sort(nodes, edges)
     for node_id in order:
         node = next((n for n in nodes if n["id"] == node_id), None)
-        if not node:
-            continue
-        node_type = node.get("type", "step")
+        if not node: continue
         await db.workflow_runs.update_one(
             {"id": run_id},
             {"$set": {f"step_states.{node_id}": {"status": "running", "started_at": now_iso()}}}
         )
-        await ws_manager.broadcast(org_id, {
-            "event": "step_state_changed",
-            "data": {"run_id": run_id, "node_id": node_id, "status": "running"}
-        })
-        # simulate execution time
+        await event_bus.publish(OrgEvent(
+            event_type="workflow.step_changed", org_id=org_id, actor_id="system",
+            subject_id=run_id, payload={"run_id": run_id, "node_id": node_id, "status": "running"}
+        ))
         await asyncio.sleep(random.uniform(0.8, 2.0))
         await db.workflow_runs.update_one(
             {"id": run_id},
             {"$set": {f"step_states.{node_id}": {"status": "completed", "completed_at": now_iso()}}}
         )
-        await ws_manager.broadcast(org_id, {
-            "event": "step_state_changed",
-            "data": {"run_id": run_id, "node_id": node_id, "status": "completed"}
-        })
-    # mark run complete
+        await event_bus.publish(OrgEvent(
+            event_type="workflow.step_changed", org_id=org_id, actor_id="system",
+            subject_id=run_id, payload={"run_id": run_id, "node_id": node_id, "status": "completed"}
+        ))
     await db.workflow_runs.update_one(
-        {"id": run_id},
-        {"$set": {"status": "completed", "completed_at": now_iso()}}
+        {"id": run_id}, {"$set": {"status": "completed", "completed_at": now_iso()}}
     )
-    await ws_manager.broadcast(org_id, {
-        "event": "workflow_run_completed",
-        "data": {"run_id": run_id}
-    })
+    await event_bus.publish(OrgEvent(
+        event_type="workflow.run_completed", org_id=org_id, actor_id="system",
+        subject_id=run_id, payload={"run_id": run_id}
+    ))
+    await _create_notif(org_id, None, "workflow_complete",
+        f"Workflow '{workflow['name']}' completed", "", "/workflows")
 
 def _topo_sort(nodes: list, edges: list) -> list:
-    """Simple topological sort for workflow execution order."""
-    adjacency: dict[str, list] = {n["id"]: [] for n in nodes}
-    in_degree: dict[str, int]  = {n["id"]: 0 for n in nodes}
+    adj = {n["id"]: [] for n in nodes}
+    ind = {n["id"]: 0 for n in nodes}
     for e in edges:
         src, tgt = e.get("source"), e.get("target")
-        if src in adjacency and tgt in adjacency:
-            adjacency[src].append(tgt)
-            in_degree[tgt] = in_degree.get(tgt, 0) + 1
-    queue = [nid for nid, deg in in_degree.items() if deg == 0]
+        if src in adj and tgt in adj:
+            adj[src].append(tgt); ind[tgt] = ind.get(tgt,0) + 1
+    queue = [nid for nid, d in ind.items() if d == 0]
     order = []
     while queue:
-        nid = queue.pop(0)
-        order.append(nid)
-        for nxt in adjacency.get(nid, []):
-            in_degree[nxt] -= 1
-            if in_degree[nxt] == 0:
-                queue.append(nxt)
+        nid = queue.pop(0); order.append(nid)
+        for nxt in adj.get(nid,[]):
+            ind[nxt] -= 1
+            if ind[nxt] == 0: queue.append(nxt)
     return order
 
-# ── App lifecycle ─────────────────────────────────────────────────────────
+async def _create_notif(org_id: str, user_id, notif_type: str, title: str, body: str, link: str):
+    notif = {
+        "id": gen_id(), "org_id": org_id, "user_id": user_id,
+        "type": notif_type, "title": title, "body": body, "link": link,
+        "read_at": None, "created_at": now_iso()
+    }
+    await db.notifications.insert_one(notif)
+    await event_bus.publish(OrgEvent(
+        event_type="notification.created", org_id=org_id, actor_id="system",
+        subject_id=notif["id"],
+        payload={"notification": serialize_doc(notif)}
+    ))
+
+async def _create_notification_for_event(event_type: str, org_id: str, actor_id: str, resource: dict):
+    if event_type == "board.proposal_created":
+        await _create_notif(org_id, None, "proposal_created",
+            f"New proposal: {resource['title']}", resource.get('description',''), "/board")
+
+async def _update_agent_reputation_on_vote(org_id: str, proposal_id: str):
+    delib = await db.deliberations.find_one({"proposal_id": proposal_id, "org_id": org_id})
+    if not delib or not delib.get("snapshots"): return
+    proposal = await db.proposals.find_one({"id": proposal_id}, {"_id": 0})
+    if not proposal or proposal.get("status") == "open": return
+    final_outcome = proposal["status"]  # approved/rejected
+    for snap in delib.get("snapshots", []):
+        agent_id = snap.get("agent_id")
+        if not agent_id: continue
+        stance = snap.get("stance","abstain")
+        matched = (stance == "approve" and final_outcome == "approved") or \
+                  (stance == "reject"  and final_outcome == "rejected")
+        delta = 0.1 if matched else -0.05
+        await db.agents.update_one(
+            {"id": agent_id},
+            {"$inc": {"reputation_score": delta, "total_votes_influenced": 1},
+             "$push": {"reputation_history": {"delta": delta, "matched": matched, "ts": now_iso()}}}
+        )
+
+async def _create_memory_from_deliberation(org_id: str, proposal: dict, snapshots: list, summary: dict):
+    # Create a decision memory node for this proposal
+    decision_node = {
+        "id": gen_id(), "org_id": org_id, "entity_type": "decision",
+        "name": proposal["title"], "description": summary.get("recommended_action",""),
+        "metadata": {"outcome": summary.get("outcome"), "proposal_id": proposal["id"]},
+        "confidence": 0.8, "influence_score": 0.0, "mention_count": 1,
+        "created_by": "system", "created_at": now_iso(), "updated_at": now_iso()
+    }
+    await db.memory_nodes.insert_one(decision_node)
+    # Create agent → decision edges
+    for snap in snapshots:
+        agent_node = await db.memory_nodes.find_one({"org_id": org_id, "metadata.agent_id": snap["agent_id"]})
+        if not agent_node:
+            agent_node = {
+                "id": gen_id(), "org_id": org_id, "entity_type": "agent",
+                "name": snap["agent_name"], "description": "",
+                "metadata": {"agent_id": snap["agent_id"]},
+                "confidence": 0.9, "influence_score": snap.get("confidence",0.5),
+                "mention_count": 1, "created_by": "system",
+                "created_at": now_iso(), "updated_at": now_iso()
+            }
+            await db.memory_nodes.insert_one(agent_node)
+        await db.memory_edges.insert_one({
+            "id": gen_id(), "org_id": org_id,
+            "source_id": agent_node["id"], "target_id": decision_node["id"],
+            "edge_type": "influenced", "weight": snap.get("confidence",0.5),
+            "metadata": {"stance": snap.get("stance"), "reasoning": snap.get("reasoning","")},
+            "created_at": now_iso()
+        })
+
+# ── Seeds + Indexes ───────────────────────────────────────────────────────
 SKILLS_SEED = [
-    {"id": "skill-coding",   "name": "Coding",        "description": "Write, review, and debug code", "category": "technical", "icon": "code"},
-    {"id": "skill-research", "name": "Research",      "description": "Deep research and fact-finding", "category": "knowledge", "icon": "search"},
-    {"id": "skill-analysis", "name": "Analysis",      "description": "Analyze data and generate insights", "category": "knowledge", "icon": "bar-chart"},
-    {"id": "skill-api",      "name": "API Execution", "description": "Call and integrate external APIs", "category": "technical", "icon": "zap"},
-    {"id": "skill-writing",  "name": "Writing",       "description": "Draft documents, proposals, and reports", "category": "creative", "icon": "file-text"},
-    {"id": "skill-decision", "name": "Decision",      "description": "Strategic decision-making and planning", "category": "strategic", "icon": "target"},
+    {"id": "skill-coding",   "name": "Coding",        "description": "Write, review, and debug code", "category": "technical"},
+    {"id": "skill-research", "name": "Research",      "description": "Deep research and fact-finding", "category": "knowledge"},
+    {"id": "skill-analysis", "name": "Analysis",      "description": "Analyze data and insights",      "category": "knowledge"},
+    {"id": "skill-api",      "name": "API Execution", "description": "Call external APIs",             "category": "technical"},
+    {"id": "skill-writing",  "name": "Writing",       "description": "Draft documents and reports",    "category": "creative"},
+    {"id": "skill-decision", "name": "Decision",      "description": "Strategic decision-making",      "category": "strategic"},
 ]
 
 @app.on_event("startup")
 async def startup():
     for skill in SKILLS_SEED:
         await db.skills.update_one({"id": skill["id"]}, {"$setOnInsert": skill}, upsert=True)
-    # create indexes
-    await db.users.create_index("email", unique=True)
-    await db.org_members.create_index([("org_id", 1), ("user_id", 1)])
-    await db.chart_nodes.create_index([("org_id", 1)])
-    await db.proposals.create_index([("org_id", 1)])
-    await db.workflow_runs.create_index([("org_id", 1)])
-    await db.messages.create_index([("thread_id", 1)])
-    logger.info("OpenClaw backend started")
+    for col, idxs in [
+        ("users", [("email", {"unique": True})]),
+        ("org_members", [([("org_id",1),("user_id",1)], {})]),
+        ("events", [([("org_id",1),("created_at",-1)], {})]),
+        ("notifications", [([("org_id",1),("user_id",1),("read_at",1)], {})]),
+        ("memory_nodes", [([("org_id",1)], {})]),
+        ("deliberations", [([("org_id",1),("proposal_id",1)], {})]),
+    ]:
+        for idx in idxs:
+            try:
+                if isinstance(idx[0], str):
+                    await getattr(db, col).create_index(idx[0], **idx[1])
+                else:
+                    await getattr(db, col).create_index(idx[0], **idx[1])
+            except Exception:
+                pass
+    logger.info("OpenClaw v2 backend started — event-driven, provider-modular")
 
 @app.on_event("shutdown")
 async def shutdown():

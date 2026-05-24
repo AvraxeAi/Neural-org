@@ -1,30 +1,6 @@
 [
   {
-    "content": "Phase 4.1: War Room — cinematic multi-agent debate UI (investor hook)",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 4.2: Premium Org Chart — multi-layout + neural graph + animated status",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 4.3: Skill Marketplace — 40+ skills + install/manage + Skill Studio",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 4.4: Agent Autonomy — tasks + goals + thought logs + autonomous mode",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 4: Backend additions (skills, tasks, goals, thought logs, layouts)",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 4: Updated nav (War Room, Marketplace) + routing",
-    "status": "completed"
-  },
-  {
     "content": "Phase 4: End-to-end testing",
-    "status": "in_progress"
+    "status": "completed"
   }
 ]

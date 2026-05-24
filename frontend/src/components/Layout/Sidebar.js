@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Network, Bot, Gavel, GitBranch, MessageSquare,
   Settings, ChevronRight, ChevronLeft, Plus, LogOut, Building2,
-  Copy, Check, Brain, Sparkles
+  Copy, Check, Brain, Sparkles, Swords, Store
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOrg } from '../../contexts/OrgContext';
@@ -25,6 +25,8 @@ const NAV = [
   { label: 'Agents',        path: '/agents',        Icon: Bot },
   { label: 'Board',         path: '/board',         Icon: Gavel },
   { label: 'Workflows',     path: '/workflows',     Icon: GitBranch },
+  { label: 'War Room',      path: '/war-room',      Icon: Swords, hot: true },
+  { label: 'Skills',        path: '/marketplace',   Icon: Store },
   { label: 'Deliberation',  path: '/deliberation',  Icon: Brain },
   { label: 'Memory',        path: '/memory',        Icon: Sparkles },
   { label: 'Messages',      path: '/messages',      Icon: MessageSquare },
@@ -170,9 +172,10 @@ export default function Sidebar() {
 
           {/* Nav */}
           <nav className="flex-1 flex flex-col gap-0.5 p-2 overflow-y-auto">
-            {NAV.map(({ label, path, Icon }) => {
+            {NAV.map(({ label, path, Icon, hot }) => {
               const active = location.pathname === path;
               const isSpecial = path === '/deliberation' || path === '/memory';
+              const isHot = hot;
               return (
                 <Tooltip key={path} delayDuration={200}>
                   <TooltipTrigger asChild>
@@ -181,14 +184,14 @@ export default function Sidebar() {
                       onClick={() => navigate(path)}
                       className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left group relative"
                       style={{
-                        background: active ? 'rgba(34,211,238,0.08)' : 'transparent',
-                        border: active ? '1px solid rgba(34,211,238,0.2)' : '1px solid transparent',
-                        boxShadow: active ? '0 0 12px rgba(34,211,238,0.08)' : 'none',
+                        background: active ? (isHot ? 'rgba(239,68,68,0.08)' : 'rgba(34,211,238,0.08)') : 'transparent',
+                        border: active ? `1px solid ${isHot ? 'rgba(239,68,68,0.2)' : 'rgba(34,211,238,0.2)'}` : '1px solid transparent',
+                        boxShadow: active ? `0 0 12px ${isHot ? 'rgba(239,68,68,0.08)' : 'rgba(34,211,238,0.08)'}` : 'none',
                       }}
                     >
-                      {active && <div className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full" style={{ background:'hsl(var(--primary))' }} />}
+                      {active && <div className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full" style={{ background: isHot ? '#ef4444' : 'hsl(var(--primary))' }} />}
                       <Icon size={17}
-                        style={{ color: active ? 'hsl(var(--primary))' : isSpecial ? '#a78bfa' : 'rgba(255,255,255,0.55)', flexShrink:0 }}
+                        style={{ color: active ? (isHot ? '#ef4444' : 'hsl(var(--primary))') : isHot ? '#f87171' : isSpecial ? '#a78bfa' : 'rgba(255,255,255,0.55)', flexShrink:0 }}
                       />
                       <AnimatePresence>
                         {expanded && (
@@ -198,7 +201,12 @@ export default function Sidebar() {
                           >{label}</motion.span>
                         )}
                       </AnimatePresence>
-                      {isSpecial && expanded && !active && (
+                      {isHot && expanded && !active && (
+                        <motion.div animate={{ opacity:[0.5,1,0.5] }} transition={{ duration:1.5, repeat:Infinity }}
+                          className="ml-auto text-[9px] px-1.5 py-0.5 rounded-full font-bold flex-shrink-0"
+                          style={{ background:'rgba(239,68,68,0.15)', color:'#ef4444' }}>HOT</motion.div>
+                      )}
+                      {isSpecial && expanded && !active && !isHot && (
                         <motion.div animate={{ opacity:[0.5,1,0.5] }} transition={{ duration:2, repeat:Infinity }}
                           className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background:'#a78bfa' }} />
                       )}

@@ -614,6 +614,270 @@ class OpenClawAPITester:
         
         return True
 
+    def test_phase4_skill_marketplace(self):
+        """Test Phase 4 Skill Marketplace endpoints"""
+        print("\n" + "="*60)
+        print("TESTING PHASE 4 - SKILL MARKETPLACE")
+        print("="*60)
+        
+        # Get all marketplace skills
+        success, response = self.run_test(
+            "GET /marketplace/skills - List all skills",
+            "GET",
+            "marketplace/skills",
+            200
+        )
+        
+        if success and response:
+            skills = response.get('skills', [])
+            categories = response.get('categories', [])
+            print(f"   Found {len(skills)} skills in marketplace")
+            print(f"   Found {len(categories)} categories")
+            
+            if len(skills) != 42:
+                print(f"   ⚠️  Expected 42 skills, got {len(skills)}")
+        
+        # Get skills by category
+        self.run_test(
+            "GET /marketplace/skills?category=research",
+            "GET",
+            "marketplace/skills?category=research",
+            200
+        )
+        
+        # Search skills
+        self.run_test(
+            "GET /marketplace/skills?q=web",
+            "GET",
+            "marketplace/skills?q=web",
+            200
+        )
+        
+        if not self.org_id:
+            print("❌ No org_id - skipping org-specific skill tests")
+            return False
+        
+        # List installed skills (should be empty initially)
+        success, response = self.run_test(
+            "GET /orgs/{id}/skills/installed - List installed skills",
+            "GET",
+            f"orgs/{self.org_id}/skills/installed",
+            200
+        )
+        
+        # Install a skill
+        success, install_response = self.run_test(
+            "POST /orgs/{id}/skills/install - Install Web Researcher skill",
+            "POST",
+            f"orgs/{self.org_id}/skills/install",
+            200,
+            json_data={"skill_id": "skill-web-researcher"}
+        )
+        
+        if success and install_response:
+            skill_id = install_response.get('skill_id', 'skill-web-researcher')
+            print(f"   Skill installed: {skill_id}")
+            
+            # Verify it appears in installed list
+            success, installed_list = self.run_test(
+                "Verify skill appears in installed list",
+                "GET",
+                f"orgs/{self.org_id}/skills/installed",
+                200
+            )
+            
+            if success and installed_list:
+                print(f"   Installed skills count: {len(installed_list)}")
+            
+            # Toggle skill (disable)
+            self.run_test(
+                "PUT /orgs/{id}/skills/{skill_id}/toggle - Disable skill",
+                "PUT",
+                f"orgs/{self.org_id}/skills/{skill_id}/toggle",
+                200
+            )
+            
+            # Toggle skill (enable)
+            self.run_test(
+                "PUT /orgs/{id}/skills/{skill_id}/toggle - Enable skill",
+                "PUT",
+                f"orgs/{self.org_id}/skills/{skill_id}/toggle",
+                200
+            )
+            
+            # Uninstall skill
+            self.run_test(
+                "DELETE /orgs/{id}/skills/{skill_id} - Uninstall skill",
+                "DELETE",
+                f"orgs/{self.org_id}/skills/{skill_id}",
+                200
+            )
+        
+        return True
+
+    def test_phase4_agent_autonomy(self):
+        """Test Phase 4 Agent Autonomy endpoints"""
+        print("\n" + "="*60)
+        print("TESTING PHASE 4 - AGENT AUTONOMY")
+        print("="*60)
+        
+        if not self.agent_id:
+            print("❌ No agent_id - skipping autonomy tests")
+            return False
+        
+        # Get tasks (should be empty initially)
+        success, tasks_response = self.run_test(
+            "GET /agents/{id}/tasks - List agent tasks",
+            "GET",
+            f"agents/{self.agent_id}/tasks",
+            200
+        )
+        
+        if success:
+            print(f"   Initial tasks count: {len(tasks_response) if isinstance(tasks_response, list) else 0}")
+        
+        # Create a task
+        success, task_response = self.run_test(
+            "POST /agents/{id}/tasks - Create task",
+            "POST",
+            f"agents/{self.agent_id}/tasks",
+            200,
+            json_data={
+                "title": "Review code for security vulnerabilities",
+                "priority": "high",
+                "description": "Perform security audit on main codebase"
+            }
+        )
+        
+        task_id = None
+        if success and task_response:
+            task_id = task_response.get('id')
+            print(f"   Task created with ID: {task_id}")
+        
+        # Update task status
+        if task_id:
+            self.run_test(
+                "PUT /agents/{id}/tasks/{task_id} - Update task status",
+                "PUT",
+                f"agents/{self.agent_id}/tasks/{task_id}",
+                200,
+                json_data={"status": "in_progress"}
+            )
+        
+        # Get goals (should be empty initially)
+        success, goals_response = self.run_test(
+            "GET /agents/{id}/goals - List agent goals",
+            "GET",
+            f"agents/{self.agent_id}/goals",
+            200
+        )
+        
+        if success:
+            print(f"   Initial goals count: {len(goals_response) if isinstance(goals_response, list) else 0}")
+        
+        # Create a goal
+        success, goal_response = self.run_test(
+            "POST /agents/{id}/goals - Create goal",
+            "POST",
+            f"agents/{self.agent_id}/goals",
+            200,
+            json_data={
+                "title": "Improve code review accuracy",
+                "metric": "accuracy_score",
+                "target_value": "95",
+                "current_value": "85"
+            }
+        )
+        
+        if success and goal_response:
+            print(f"   Goal created with ID: {goal_response.get('id')}")
+        
+        # Get thoughts
+        self.run_test(
+            "GET /agents/{id}/thoughts - List agent thoughts",
+            "GET",
+            f"agents/{self.agent_id}/thoughts",
+            200
+        )
+        
+        # Get schedules
+        success, schedules_response = self.run_test(
+            "GET /agents/{id}/schedules - List agent schedules",
+            "GET",
+            f"agents/{self.agent_id}/schedules",
+            200
+        )
+        
+        if success:
+            print(f"   Initial schedules count: {len(schedules_response) if isinstance(schedules_response, list) else 0}")
+        
+        # Create a schedule
+        success, schedule_response = self.run_test(
+            "POST /agents/{id}/schedules - Create schedule",
+            "POST",
+            f"agents/{self.agent_id}/schedules",
+            200,
+            json_data={
+                "task_description": "Daily code quality check",
+                "interval": "daily"
+            }
+        )
+        
+        schedule_id = None
+        if success and schedule_response:
+            schedule_id = schedule_response.get('id')
+            print(f"   Schedule created with ID: {schedule_id}")
+        
+        # Toggle schedule
+        if schedule_id:
+            self.run_test(
+                "PUT /agents/{id}/schedules/{schedule_id}/toggle - Toggle schedule",
+                "PUT",
+                f"agents/{self.agent_id}/schedules/{schedule_id}/toggle",
+                200
+            )
+        
+        # Get autonomy summary
+        success, summary_response = self.run_test(
+            "GET /agents/{id}/autonomy-summary - Get autonomy summary",
+            "GET",
+            f"agents/{self.agent_id}/autonomy-summary",
+            200
+        )
+        
+        if success and summary_response:
+            print(f"   Autonomy summary received:")
+            if 'task_counts' in summary_response:
+                print(f"     - Task counts: {summary_response['task_counts']}")
+            if 'active_goals' in summary_response:
+                print(f"     - Active goals: {summary_response['active_goals']}")
+        
+        return True
+
+    def test_phase4_org_chart_layouts(self):
+        """Test Phase 4 Org Chart Layout endpoints"""
+        print("\n" + "="*60)
+        print("TESTING PHASE 4 - ORG CHART LAYOUTS")
+        print("="*60)
+        
+        if not self.org_id:
+            print("❌ No org_id - skipping layout tests")
+            return False
+        
+        # Get layouts (this endpoint might not exist, but we test the chart endpoint)
+        success, response = self.run_test(
+            "GET /orgs/{id}/chart - Verify chart supports multiple layouts",
+            "GET",
+            f"orgs/{self.org_id}/chart",
+            200
+        )
+        
+        if success and response:
+            print(f"   Chart has {len(response)} nodes")
+            print("   ✓ Chart endpoint working (layouts are frontend-only)")
+        
+        return True
+
     def print_summary(self):
         """Print test summary"""
         print("\n" + "="*60)
@@ -668,6 +932,14 @@ def main():
     tester.test_phase3_notification_endpoints()
     tester.test_phase3_system_health_endpoints()
     tester.test_phase3_events_endpoints()
+    
+    # Phase 4 tests
+    print("\n" + "="*60)
+    print("PHASE 4 FEATURE TESTING")
+    print("="*60)
+    tester.test_phase4_skill_marketplace()
+    tester.test_phase4_agent_autonomy()
+    tester.test_phase4_org_chart_layouts()
     
     # Print summary
     all_passed = tester.print_summary()

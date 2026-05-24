@@ -14,6 +14,8 @@ import MessagesPage from './pages/MessagesPage';
 import SettingsPage from './pages/SettingsPage';
 import DeliberationPage from './pages/DeliberationPage';
 import MemoryPage from './pages/MemoryPage';
+import WarRoomPage from './pages/WarRoomPage';
+import SkillMarketplacePage from './pages/SkillMarketplacePage';
 import AppLayout from './components/Layout/AppLayout';
 
 function ProtectedRoute({ children }) {
@@ -22,7 +24,7 @@ function ProtectedRoute({ children }) {
     <div className="h-screen flex items-center justify-center" style={{background:'hsl(var(--background))'}}>
       <div className="flex flex-col items-center gap-4">
         <div className="w-10 h-10 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm text-muted-foreground">Loading OpenClaw...</p>
+        <p className="text-sm text-muted-foreground">Loading Neural-Org...</p>
       </div>
     </div>
   );
@@ -47,18 +49,20 @@ function App() {
       <AuthProvider>
         <BrowserRouter>
           <Routes>
-            <Route path="/login"         element={<PublicRoute><LoginPage /></PublicRoute>} />
-            <Route path="/dashboard"     element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-            <Route path="/org-chart"     element={<ProtectedRoute><OrgChartPage /></ProtectedRoute>} />
-            <Route path="/agents"        element={<ProtectedRoute><AgentsPage /></ProtectedRoute>} />
-            <Route path="/board"         element={<ProtectedRoute><BoardPage /></ProtectedRoute>} />
-            <Route path="/workflows"     element={<ProtectedRoute><WorkflowsPage /></ProtectedRoute>} />
-            <Route path="/deliberation"  element={<ProtectedRoute><DeliberationPage /></ProtectedRoute>} />
-            <Route path="/memory"        element={<ProtectedRoute><MemoryPage /></ProtectedRoute>} />
-            <Route path="/messages"      element={<ProtectedRoute><MessagesPage /></ProtectedRoute>} />
-            <Route path="/settings"      element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-            <Route path="/"              element={<Navigate to="/dashboard" replace />} />
-            <Route path="*"              element={<Navigate to="/dashboard" replace />} />
+            <Route path="/login"       element={<PublicRoute><LoginPage /></PublicRoute>} />
+            <Route path="/dashboard"   element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+            <Route path="/org-chart"   element={<ProtectedRoute><OrgChartPage /></ProtectedRoute>} />
+            <Route path="/agents"      element={<ProtectedRoute><AgentsPage /></ProtectedRoute>} />
+            <Route path="/board"       element={<ProtectedRoute><BoardPage /></ProtectedRoute>} />
+            <Route path="/workflows"   element={<ProtectedRoute><WorkflowsPage /></ProtectedRoute>} />
+            <Route path="/war-room"    element={<ProtectedRoute><WarRoomPage /></ProtectedRoute>} />
+            <Route path="/deliberation" element={<ProtectedRoute><DeliberationPage /></ProtectedRoute>} />
+            <Route path="/memory"      element={<ProtectedRoute><MemoryPage /></ProtectedRoute>} />
+            <Route path="/marketplace" element={<ProtectedRoute><SkillMarketplacePage /></ProtectedRoute>} />
+            <Route path="/messages"    element={<ProtectedRoute><MessagesPage /></ProtectedRoute>} />
+            <Route path="/settings"    element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+            <Route path="/"            element={<Navigate to="/dashboard" replace />} />
+            <Route path="*"            element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </BrowserRouter>
         <Toaster richColors position="top-right" />

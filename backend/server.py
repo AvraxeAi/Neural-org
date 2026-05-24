@@ -15,6 +15,7 @@ import os, uuid, asyncio, json, logging, random, string, time
 from events_bus import EventBus, OrgEvent
 import providers as prov
 import deliberation as delib
+from skills_catalog import SKILLS_CATALOG, SKILL_CATEGORIES
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -1275,6 +1276,352 @@ async def _create_memory_from_deliberation(org_id: str, proposal: dict, snapshot
             "created_at": now_iso()
         })
 
+# ════════════════════════════════════════════════════════════════════════════
+# ⑮ SKILL MARKETPLACE (Phase 4)
+# ════════════════════════════════════════════════════════════════════════════
+class SkillInstallReq(BaseModel):
+    skill_id: str
+    source_override: str = ""  # stub: github url / zip / url
+
+@api_router.get("/marketplace/skills")
+async def list_marketplace_skills(category: str = "all", q: str = ""):
+    skills = SKILLS_CATALOG
+    if category and category != "all":
+        skills = [s for s in skills if s["category"] == category]
+    if q:
+        ql = q.lower()
+        skills = [s for s in skills if ql in s["name"].lower() or ql in s["description"].lower() or any(ql in t for t in s["tags"])]
+    return {"skills": skills, "categories": SKILL_CATEGORIES, "total": len(skills)}
+
+@api_router.get("/marketplace/skills/{skill_id}")
+async def get_marketplace_skill(skill_id: str):
+    skill = next((s for s in SKILLS_CATALOG if s["id"] == skill_id), None)
+    if not skill:
+        raise HTTPException(404, "Skill not found")
+    return skill
+
+@api_router.get("/orgs/{org_id}/skills/installed")
+async def list_installed_skills(org_id: str, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    installs = await db.org_installed_skills.find({"org_id": org_id}, {"_id": 0}).to_list(200)
+    # enrich with catalog data
+    result = []
+    for inst in installs:
+        catalog = next((s for s in SKILLS_CATALOG if s["id"] == inst["skill_id"]), {})
+        result.append({**catalog, **serialize_doc(inst)})
+    return result
+
+@api_router.post("/orgs/{org_id}/skills/install")
+async def install_skill(org_id: str, req: SkillInstallReq, user=Depends(get_current_user)):
+    await _assert_min_role(org_id, user["id"], "member")
+    catalog = next((s for s in SKILLS_CATALOG if s["id"] == req.skill_id), None)
+    if not catalog:
+        raise HTTPException(404, "Skill not in catalog")
+    existing = await db.org_installed_skills.find_one({"org_id": org_id, "skill_id": req.skill_id})
+    if existing:
+        raise HTTPException(400, "Skill already installed")
+    install = {
+        "id": gen_id(), "org_id": org_id, "skill_id": req.skill_id,
+        "installed_version": catalog["version"], "enabled": True,
+        "installed_by": user["id"], "installed_at": now_iso(),
+        "source_override": req.source_override,
+    }
+    await db.org_installed_skills.insert_one(install)
+    await event_bus.publish(OrgEvent(
+        event_type="skill.installed", org_id=org_id, actor_id=user["id"],
+        payload={"skill_id": req.skill_id, "name": catalog["name"]}
+    ))
+    await _create_notif(org_id, None, "skill_installed",
+        f"Skill installed: {catalog['name']}", catalog["description"], "/marketplace")
+    return serialize_doc(install)
+
+@api_router.delete("/orgs/{org_id}/skills/{skill_id}")
+async def uninstall_skill(org_id: str, skill_id: str, user=Depends(get_current_user)):
+    await _assert_min_role(org_id, user["id"], "member")
+    result = await db.org_installed_skills.delete_one({"org_id": org_id, "skill_id": skill_id})
+    if result.deleted_count == 0:
+        raise HTTPException(404, "Skill not installed")
+    await event_bus.publish(OrgEvent(
+        event_type="skill.uninstalled", org_id=org_id, actor_id=user["id"],
+        payload={"skill_id": skill_id}
+    ))
+    return {"ok": True}
+
+@api_router.put("/orgs/{org_id}/skills/{skill_id}/toggle")
+async def toggle_skill(org_id: str, skill_id: str, user=Depends(get_current_user)):
+    await _assert_min_role(org_id, user["id"], "member")
+    inst = await db.org_installed_skills.find_one({"org_id": org_id, "skill_id": skill_id})
+    if not inst:
+        raise HTTPException(404, "Skill not installed")
+    new_state = not inst.get("enabled", True)
+    await db.org_installed_skills.update_one(
+        {"org_id": org_id, "skill_id": skill_id},
+        {"$set": {"enabled": new_state}}
+    )
+    return {"enabled": new_state}
+
+# ════════════════════════════════════════════════════════════════════════════
+# ⑯ AGENT AUTONOMY — Tasks + Goals + Thought Logs (Phase 4)
+# ════════════════════════════════════════════════════════════════════════════
+class AgentTaskCreate(BaseModel):
+    title: str
+    description: str = ""
+    priority: str = "medium"  # low/medium/high/critical
+    due_date: str = ""
+
+class AgentTaskUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None  # pending/in_progress/completed/cancelled/blocked
+    priority: Optional[str] = None
+
+class AgentGoalCreate(BaseModel):
+    title: str
+    description: str = ""
+    metric: str = ""
+    target_value: str = ""
+    deadline: str = ""
+
+class AgentGoalUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None  # active/completed/paused/cancelled
+    progress: Optional[float] = None  # 0-100
+    metric: Optional[str] = None
+    current_value: Optional[str] = None
+
+class AgentThoughtCreate(BaseModel):
+    content: str
+    thought_type: str = "observation"  # observation/plan/decision/concern/insight
+
+class AgentScheduleCreate(BaseModel):
+    task_description: str
+    interval: str = "daily"   # hourly/daily/weekly
+    enabled: bool = True
+
+@api_router.get("/agents/{agent_id}/tasks")
+async def list_agent_tasks(agent_id: str, user=Depends(get_current_user)):
+    agent = await db.agents.find_one({"id": agent_id}, {"_id": 0})
+    if not agent: raise HTTPException(404)
+    await _assert_member(agent["org_id"], user["id"])
+    tasks = await db.agent_tasks.find({"agent_id": agent_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return [serialize_doc(t) for t in tasks]
+
+@api_router.post("/agents/{agent_id}/tasks")
+async def create_agent_task(agent_id: str, req: AgentTaskCreate, user=Depends(get_current_user)):
+    agent = await db.agents.find_one({"id": agent_id}, {"_id": 0})
+    if not agent: raise HTTPException(404)
+    await _assert_member(agent["org_id"], user["id"])
+    task = {
+        "id": gen_id(), "agent_id": agent_id, "org_id": agent["org_id"],
+        "title": req.title, "description": req.description,
+        "priority": req.priority, "status": "pending",
+        "due_date": req.due_date, "assigned_by": user["id"],
+        "created_at": now_iso(), "updated_at": now_iso(),
+    }
+    await db.agent_tasks.insert_one(task)
+    result = serialize_doc(task)
+    await event_bus.publish(OrgEvent(
+        event_type="agent.task_created", org_id=agent["org_id"], actor_id=user["id"],
+        subject_id=agent_id, payload={"task_id": task["id"], "title": req.title, "agent_name": agent["name"]}
+    ))
+    return result
+
+@api_router.put("/agents/{agent_id}/tasks/{task_id}")
+async def update_agent_task(agent_id: str, task_id: str, req: AgentTaskUpdate, user=Depends(get_current_user)):
+    agent = await db.agents.find_one({"id": agent_id}, {"_id": 0})
+    if not agent: raise HTTPException(404)
+    await _assert_member(agent["org_id"], user["id"])
+    update = {k: v for k, v in req.model_dump().items() if v is not None}
+    update["updated_at"] = now_iso()
+    await db.agent_tasks.update_one({"id": task_id, "agent_id": agent_id}, {"$set": update})
+    updated = await db.agent_tasks.find_one({"id": task_id}, {"_id": 0})
+    return serialize_doc(updated)
+
+@api_router.delete("/agents/{agent_id}/tasks/{task_id}")
+async def delete_agent_task(agent_id: str, task_id: str, user=Depends(get_current_user)):
+    agent = await db.agents.find_one({"id": agent_id}, {"_id": 0})
+    if not agent: raise HTTPException(404)
+    await _assert_member(agent["org_id"], user["id"])
+    await db.agent_tasks.delete_one({"id": task_id, "agent_id": agent_id})
+    return {"ok": True}
+
+@api_router.get("/agents/{agent_id}/goals")
+async def list_agent_goals(agent_id: str, user=Depends(get_current_user)):
+    agent = await db.agents.find_one({"id": agent_id}, {"_id": 0})
+    if not agent: raise HTTPException(404)
+    await _assert_member(agent["org_id"], user["id"])
+    goals = await db.agent_goals.find({"agent_id": agent_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return [serialize_doc(g) for g in goals]
+
+@api_router.post("/agents/{agent_id}/goals")
+async def create_agent_goal(agent_id: str, req: AgentGoalCreate, user=Depends(get_current_user)):
+    agent = await db.agents.find_one({"id": agent_id}, {"_id": 0})
+    if not agent: raise HTTPException(404)
+    await _assert_member(agent["org_id"], user["id"])
+    goal = {
+        "id": gen_id(), "agent_id": agent_id, "org_id": agent["org_id"],
+        "title": req.title, "description": req.description,
+        "metric": req.metric, "target_value": req.target_value,
+        "current_value": "0", "deadline": req.deadline,
+        "status": "active", "progress": 0.0,
+        "created_by": user["id"], "created_at": now_iso(),
+    }
+    await db.agent_goals.insert_one(goal)
+    return serialize_doc(goal)
+
+@api_router.put("/agents/{agent_id}/goals/{goal_id}")
+async def update_agent_goal(agent_id: str, goal_id: str, req: AgentGoalUpdate, user=Depends(get_current_user)):
+    agent = await db.agents.find_one({"id": agent_id}, {"_id": 0})
+    if not agent: raise HTTPException(404)
+    await _assert_member(agent["org_id"], user["id"])
+    update = {k: v for k, v in req.model_dump().items() if v is not None}
+    await db.agent_goals.update_one({"id": goal_id, "agent_id": agent_id}, {"$set": update})
+    updated = await db.agent_goals.find_one({"id": goal_id}, {"_id": 0})
+    return serialize_doc(updated)
+
+@api_router.get("/agents/{agent_id}/thoughts")
+async def list_agent_thoughts(agent_id: str, limit: int = 50, user=Depends(get_current_user)):
+    agent = await db.agents.find_one({"id": agent_id}, {"_id": 0})
+    if not agent: raise HTTPException(404)
+    await _assert_member(agent["org_id"], user["id"])
+    thoughts = await db.agent_thoughts.find({"agent_id": agent_id}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return [serialize_doc(t) for t in thoughts]
+
+@api_router.post("/agents/{agent_id}/thoughts")
+async def add_agent_thought(agent_id: str, req: AgentThoughtCreate, user=Depends(get_current_user)):
+    agent = await db.agents.find_one({"id": agent_id}, {"_id": 0})
+    if not agent: raise HTTPException(404)
+    await _assert_member(agent["org_id"], user["id"])
+    thought = {
+        "id": gen_id(), "agent_id": agent_id, "org_id": agent["org_id"],
+        "content": req.content, "thought_type": req.thought_type,
+        "source": "user", "created_at": now_iso(),
+    }
+    await db.agent_thoughts.insert_one(thought)
+    result = serialize_doc(thought)
+    await event_bus.publish(OrgEvent(
+        event_type="agent.thought_added", org_id=agent["org_id"], actor_id=user["id"],
+        subject_id=agent_id, payload=result
+    ))
+    return result
+
+@api_router.get("/agents/{agent_id}/schedules")
+async def list_agent_schedules(agent_id: str, user=Depends(get_current_user)):
+    agent = await db.agents.find_one({"id": agent_id}, {"_id": 0})
+    if not agent: raise HTTPException(404)
+    await _assert_member(agent["org_id"], user["id"])
+    schedules = await db.agent_schedules.find({"agent_id": agent_id}, {"_id": 0}).to_list(20)
+    return [serialize_doc(s) for s in schedules]
+
+@api_router.post("/agents/{agent_id}/schedules")
+async def create_agent_schedule(agent_id: str, req: AgentScheduleCreate, user=Depends(get_current_user)):
+    agent = await db.agents.find_one({"id": agent_id}, {"_id": 0})
+    if not agent: raise HTTPException(404)
+    await _assert_member(agent["org_id"], user["id"])
+    schedule = {
+        "id": gen_id(), "agent_id": agent_id, "org_id": agent["org_id"],
+        "task_description": req.task_description, "interval": req.interval,
+        "enabled": req.enabled, "last_run": None, "next_run": now_iso(),
+        "created_by": user["id"], "created_at": now_iso(),
+    }
+    await db.agent_schedules.insert_one(schedule)
+    return serialize_doc(schedule)
+
+@api_router.put("/agents/{agent_id}/schedules/{schedule_id}/toggle")
+async def toggle_schedule(agent_id: str, schedule_id: str, user=Depends(get_current_user)):
+    agent = await db.agents.find_one({"id": agent_id}, {"_id": 0})
+    if not agent: raise HTTPException(404)
+    await _assert_member(agent["org_id"], user["id"])
+    sched = await db.agent_schedules.find_one({"id": schedule_id, "agent_id": agent_id})
+    if not sched: raise HTTPException(404)
+    new_state = not sched.get("enabled", True)
+    await db.agent_schedules.update_one({"id": schedule_id}, {"$set": {"enabled": new_state}})
+    return {"enabled": new_state}
+
+@api_router.get("/agents/{agent_id}/autonomy-summary")
+async def agent_autonomy_summary(agent_id: str, user=Depends(get_current_user)):
+    agent = await db.agents.find_one({"id": agent_id}, {"_id": 0})
+    if not agent: raise HTTPException(404)
+    await _assert_member(agent["org_id"], user["id"])
+    return {
+        "task_counts": {
+            "pending":     await db.agent_tasks.count_documents({"agent_id": agent_id, "status": "pending"}),
+            "in_progress": await db.agent_tasks.count_documents({"agent_id": agent_id, "status": "in_progress"}),
+            "completed":   await db.agent_tasks.count_documents({"agent_id": agent_id, "status": "completed"}),
+        },
+        "active_goals":   await db.agent_goals.count_documents({"agent_id": agent_id, "status": "active"}),
+        "thought_count":  await db.agent_thoughts.count_documents({"agent_id": agent_id}),
+        "schedules":      await db.agent_schedules.count_documents({"agent_id": agent_id, "enabled": True}),
+        "reputation":     agent.get("reputation_score", 5.0),
+        "deliberations":  agent.get("total_deliberations", 0),
+    }
+
+# ════════════════════════════════════════════════════════════════════════════
+# ⑰ ORG CHART LAYOUTS (Phase 4)
+# ════════════════════════════════════════════════════════════════════════════
+class OrgLayoutSave(BaseModel):
+    name: str
+    layout_type: str  # tree/radial/force/swimlane
+    view_state: dict = {}  # zoom, pan, etc.
+    node_positions: dict = {}  # {node_id: {x,y}}
+
+@api_router.get("/orgs/{org_id}/layouts")
+async def list_layouts(org_id: str, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    layouts = await db.org_layouts.find({"org_id": org_id}, {"_id": 0}).sort("saved_at", -1).to_list(20)
+    return [serialize_doc(l) for l in layouts]
+
+@api_router.post("/orgs/{org_id}/layouts")
+async def save_layout(org_id: str, req: OrgLayoutSave, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    layout = {
+        "id": gen_id(), "org_id": org_id, "name": req.name,
+        "layout_type": req.layout_type, "view_state": req.view_state,
+        "node_positions": req.node_positions, "saved_by": user["id"],
+        "saved_at": now_iso(),
+    }
+    await db.org_layouts.insert_one(layout)
+    return serialize_doc(layout)
+
+@api_router.delete("/orgs/{org_id}/layouts/{layout_id}")
+async def delete_layout(org_id: str, layout_id: str, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    await db.org_layouts.delete_one({"id": layout_id, "org_id": org_id})
+    return {"ok": True}
+
+# ════════════════════════════════════════════════════════════════════════════
+# ⑱ WAR ROOM enhanced events (Phase 4)
+# ════════════════════════════════════════════════════════════════════════════
+@api_router.get("/orgs/{org_id}/war-room/sessions")
+async def list_war_room_sessions(org_id: str, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    docs = await db.deliberations.find({"org_id": org_id}, {"_id": 0}).sort("started_at", -1).to_list(50)
+    return [serialize_doc(d) for d in docs]
+
+@api_router.get("/orgs/{org_id}/agent-activity")
+async def agent_activity_feed(org_id: str, user=Depends(get_current_user)):
+    """Live agent activity for War Room + Command Center."""
+    await _assert_member(org_id, user["id"])
+    agents = await db.agents.find({"org_id": org_id}, {"_id": 0}).to_list(50)
+    activity = []
+    for a in agents:
+        recent_tasks  = await db.agent_tasks.find({"agent_id": a["id"]}, {"_id": 0}).sort("updated_at", -1).limit(2).to_list(2)
+        recent_thoughts = await db.agent_thoughts.find({"agent_id": a["id"]}, {"_id": 0}).sort("created_at", -1).limit(1).to_list(1)
+        p = presence.get(org_id, {}).get(f"agent_{a['id']}", {})
+        activity.append({
+            "agent": serialize_doc(a),
+            "status": p.get("status", "offline"),
+            "thinking": p.get("thinking", False),
+            "recent_tasks": [serialize_doc(t) for t in recent_tasks],
+            "last_thought": serialize_doc(recent_thoughts[0]) if recent_thoughts else None,
+            "task_counts": {
+                "pending":    await db.agent_tasks.count_documents({"agent_id": a["id"], "status": "pending"}),
+                "in_progress": await db.agent_tasks.count_documents({"agent_id": a["id"], "status": "in_progress"}),
+            },
+        })
+    return activity
+
 # ── Seeds + Indexes ───────────────────────────────────────────────────────
 SKILLS_SEED = [
     {"id": "skill-coding",   "name": "Coding",        "description": "Write, review, and debug code", "category": "technical"},
@@ -1296,6 +1643,10 @@ async def startup():
         ("notifications", [([("org_id",1),("user_id",1),("read_at",1)], {})]),
         ("memory_nodes", [([("org_id",1)], {})]),
         ("deliberations", [([("org_id",1),("proposal_id",1)], {})]),
+        ("agent_tasks", [([("agent_id",1),("status",1)], {})]),
+        ("agent_goals", [([("agent_id",1)], {})]),
+        ("agent_thoughts", [([("agent_id",1),("created_at",-1)], {})]),
+        ("org_installed_skills", [([("org_id",1),("skill_id",1)], {})]),
     ]:
         for idx in idxs:
             try:
@@ -1305,10 +1656,11 @@ async def startup():
                     await getattr(db, col).create_index(idx[0], **idx[1])
             except Exception:
                 pass
-    logger.info("OpenClaw v2 backend started — event-driven, provider-modular")
+    logger.info("Neural-Org backend started — AI Operating System v4")
 
 @app.on_event("shutdown")
 async def shutdown():
     client.close()
 
 app.include_router(api_router)
+

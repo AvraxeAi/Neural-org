@@ -115,3 +115,43 @@ export const notifAPI = {
   count:    orgId          => api.get(`/orgs/${orgId}/notifications/count`),
   markRead: (orgId,ids)    => api.post(`/orgs/${orgId}/notifications/read`, {notification_ids:ids||[]}),
 };
+
+// ── Marketplace ──────────────────────────────────────────────────────────
+export const marketplaceAPI = {
+  listSkills:     (cat,q) => api.get(`/marketplace/skills`, {params:{category:cat,q}}),
+  getSkill:       id      => api.get(`/marketplace/skills/${id}`),
+  listInstalled:  orgId   => api.get(`/orgs/${orgId}/skills/installed`),
+  install:        (oid,sid) => api.post(`/orgs/${oid}/skills/install`, {skill_id:sid}),
+  uninstall:      (oid,sid) => api.delete(`/orgs/${oid}/skills/${sid}`),
+  toggle:         (oid,sid) => api.put(`/orgs/${oid}/skills/${sid}/toggle`),
+};
+
+// ── Agent Autonomy ────────────────────────────────────────────────────────
+export const autonomyAPI = {
+  getTasks:       id => api.get(`/agents/${id}/tasks`),
+  createTask:     (id,d) => api.post(`/agents/${id}/tasks`, d),
+  updateTask:     (id,tid,d) => api.put(`/agents/${id}/tasks/${tid}`, d),
+  deleteTask:     (id,tid) => api.delete(`/agents/${id}/tasks/${tid}`),
+  getGoals:       id => api.get(`/agents/${id}/goals`),
+  createGoal:     (id,d) => api.post(`/agents/${id}/goals`, d),
+  updateGoal:     (id,gid,d) => api.put(`/agents/${id}/goals/${gid}`, d),
+  getThoughts:    id => api.get(`/agents/${id}/thoughts`),
+  addThought:     (id,d) => api.post(`/agents/${id}/thoughts`, d),
+  getSchedules:   id => api.get(`/agents/${id}/schedules`),
+  createSchedule: (id,d) => api.post(`/agents/${id}/schedules`, d),
+  toggleSchedule: (id,sid) => api.put(`/agents/${id}/schedules/${sid}/toggle`),
+  getSummary:     id => api.get(`/agents/${id}/autonomy-summary`),
+};
+
+// ── Layouts ───────────────────────────────────────────────────────────────
+export const layoutAPI = {
+  list:   oid => api.get(`/orgs/${oid}/layouts`),
+  save:   (oid,d) => api.post(`/orgs/${oid}/layouts`, d),
+  delete: (oid,lid) => api.delete(`/orgs/${oid}/layouts/${lid}`),
+};
+
+// ── War Room ──────────────────────────────────────────────────────────────
+export const warRoomAPI = {
+  listSessions:  oid => api.get(`/orgs/${oid}/war-room/sessions`),
+  agentActivity: oid => api.get(`/orgs/${oid}/agent-activity`),
+};

@@ -1,34 +1,34 @@
 [
   {
     "content": "Personal Org Agent Roster (My Agents page + delegation status)",
-    "status": "in_progress"
+    "status": "completed"
   },
   {
     "content": "Invite Acceptance Flow (delegate picker UI replacing UUID text input)",
-    "status": "pending"
+    "status": "completed"
   },
   {
     "content": "Delegate Swap Request system (request + owner approval)",
-    "status": "pending"
+    "status": "completed"
   },
   {
     "content": "Org Chart: home/guest/delegate visual badges",
-    "status": "pending"
+    "status": "completed"
   },
   {
     "content": "War Room: risk_score in thought snapshots",
-    "status": "pending"
+    "status": "completed"
   },
   {
     "content": "Settings: swap request approval UI",
-    "status": "pending"
+    "status": "completed"
   },
   {
     "content": "Backend: /me/agents, swap requests, chart is_guest_delegate, risk_score",
-    "status": "pending"
+    "status": "completed"
   },
   {
     "content": "End-to-end testing",
-    "status": "pending"
+    "status": "completed"
   }
 ]

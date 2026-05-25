@@ -179,6 +179,28 @@ function AgentCard({ agent, snapshot, isThinking, isActive, round }) {
               </span>
             </div>
 
+            {/* Risk score */}
+            {snapshot.risk_score !== undefined && (
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono" style={{ color: 'rgba(255,255,255,0.4)', minWidth: 24 }}>RISK</span>
+                <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${snapshot.risk_score * 100}%` }}
+                    transition={{ duration: 0.8, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                    className="h-full rounded-full"
+                    style={{ background: snapshot.risk_score > 0.7 ? '#ef4444' : snapshot.risk_score > 0.4 ? '#f59e0b' : '#10b981' }}
+                  />
+                </div>
+                <span className="text-[10px] font-mono" style={{
+                  color: snapshot.risk_score > 0.7 ? '#ef4444' : snapshot.risk_score > 0.4 ? '#f59e0b' : '#10b981',
+                  minWidth: 32
+                }}>
+                  {Math.round(snapshot.risk_score * 100)}%
+                </span>
+              </div>
+            )}
+
             {/* Concerns */}
             {snapshot.concerns?.length > 0 && (
               <div className="flex flex-wrap gap-1">

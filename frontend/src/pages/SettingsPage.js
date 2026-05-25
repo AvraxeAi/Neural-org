@@ -2,10 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useOrg } from '../contexts/OrgContext';
 import { orgAPI } from '../lib/api';
+import api from '../lib/api';
 import { toast } from 'sonner';
 import {
-  Settings, User, Building2, Users, Copy, Check,
-  RefreshCw, Shield, Crown, LogOut, Cpu, Key, Zap
+  Settings, User, Building2, Users, Copy, Check, Globe,
+  RefreshCw, Shield, Crown, LogOut, Cpu, Key, Zap, CheckCircle2, XCircle, Clock, Bot
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -15,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Separator } from '../components/ui/separator';
 import HealthPanel from '../components/Layout/HealthPanel';
+import { Textarea } from '../components/ui/textarea';
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
@@ -25,6 +27,9 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [orgConfig, setOrgConfig] = useState({ default_provider:'', default_model:'', openrouter_key:'', api_key:'' });
   const [savingConfig, setSavingConfig] = useState(false);
+  const [swapRequests, setSwapRequests] = useState([]);
+  const [reviewNotes, setReviewNotes] = useState({});
+  const [reviewingId, setReviewingId] = useState(null);
 
   const fetchMembers = useCallback(async () => {
     if (!currentOrg) return;
@@ -34,6 +39,11 @@ export default function SettingsPage() {
     try {
       const cfgRes = await orgAPI.getConfig(currentOrg.id);
       setOrgConfig(prev => ({ ...prev, ...cfgRes.data }));
+    } catch { }
+    // fetch swap requests
+    try {
+      const swapRes = await api.get(`/orgs/${currentOrg.id}/delegates/swap-requests`);
+      setSwapRequests(swapRes.data);
     } catch { }
   }, [currentOrg]);
 
@@ -69,6 +79,14 @@ export default function SettingsPage() {
           <TabsList style={{background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)'}}>
             <TabsTrigger value="org">Organization</TabsTrigger>
             <TabsTrigger value="members">Members</TabsTrigger>
+            <TabsTrigger value="delegates">
+              Delegates
+              {swapRequests.filter(r=>r.status==='pending').length > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold" style={{background:'#ef4444',color:'white'}}>
+                  {swapRequests.filter(r=>r.status==='pending').length}
+                </span>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="providers">AI Providers</TabsTrigger>
             <TabsTrigger value="health">System Health</TabsTrigger>
             <TabsTrigger value="profile">Profile</TabsTrigger>
@@ -113,6 +131,109 @@ export default function SettingsPage() {
             </div>
           </TabsContent>
 
+          {/* Delegates tab — swap request approval */}
+          <TabsContent value="delegates" className="mt-4 space-y-3">
+            <div className="rounded-2xl p-4" style={{background:'var(--surface-1)', border:'1px solid rgba(255,255,255,0.07)'}}>
+              <h3 className="text-sm font-semibold mb-1" style={{fontFamily:'Space Grotesk'}}>Delegate Swap Requests</h3>
+              <p className="text-xs mb-4" style={{color:'rgba(255,255,255,0.4)'}}>Review requests from members who want to change their delegate agent.</p>
+              {swapRequests.length === 0 ? (
+                <div className="text-center py-8">
+                  <Globe size={28} className="mx-auto mb-2" style={{color:'rgba(255,255,255,0.15)'}} />
+                  <p className="text-xs" style={{color:'rgba(255,255,255,0.3)'}}>No swap requests</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {swapRequests.map(req => {
+                    const cur  = req.current_agent  || {};
+                    const nw   = req.new_agent       || {};
+                    const isPending = req.status === 'pending';
+                    return (
+                      <div key={req.id} className="rounded-xl p-4"
+                        style={{background:'rgba(255,255,255,0.03)', border:`1px solid ${isPending?'rgba(245,158,11,0.2)':'rgba(255,255,255,0.07)'}`}}>
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <p className="text-sm font-semibold" style={{fontFamily:'Space Grotesk'}}>{req.requesting_user_name}</p>
+                            <p className="text-xs mt-0.5" style={{color:'rgba(255,255,255,0.4)'}}>
+                              {new Date(req.requested_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            req.status==='pending'?'bg-amber-500/15 text-amber-300':
+                            req.status==='approved'?'bg-emerald-500/15 text-emerald-300':
+                            'bg-red-500/15 text-red-400'}`}>
+                            {req.status}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 mb-3 p-2.5 rounded-xl"
+                          style={{background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.06)'}}>
+                          <div className="flex items-center gap-1.5 flex-1">
+                            <Bot size={13} style={{color:'#a78bfa'}} />
+                            <span className="text-xs" style={{color:'rgba(255,255,255,0.7)'}}>{cur.name||'Unknown'}</span>
+                          </div>
+                          <span className="text-xs" style={{color:'rgba(255,255,255,0.3)'}}>→</span>
+                          <div className="flex items-center gap-1.5 flex-1">
+                            <Bot size={13} style={{color:'#22d3ee'}} />
+                            <span className="text-xs font-medium" style={{color:'#22d3ee'}}>{nw.name||'Unknown'}</span>
+                          </div>
+                        </div>
+
+                        {req.reason && (
+                          <p className="text-xs mb-3 italic" style={{color:'rgba(255,255,255,0.5)'}}>"{req.reason}"</p>
+                        )}
+
+                        {isPending && (
+                          <div className="space-y-2">
+                            <Textarea
+                              value={reviewNotes[req.id]||''}
+                              onChange={e=>setReviewNotes(prev=>({...prev,[req.id]:e.target.value}))}
+                              placeholder="Optional review note..."
+                              rows={2}
+                              className="text-xs"
+                              style={{background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', resize:'none'}}
+                            />
+                            <div className="flex gap-2">
+                              <Button size="sm" className="flex-1 h-8"
+                                disabled={reviewingId===req.id}
+                                onClick={async () => {
+                                  setReviewingId(req.id);
+                                  try {
+                                    await api.put(`/orgs/${currentOrg.id}/delegates/swap-requests/${req.id}`, {approved:true, review_note:reviewNotes[req.id]||''});
+                                    toast.success('Swap approved!');
+                                    fetchMembers();
+                                  } catch { toast.error('Failed'); } finally { setReviewingId(null); }
+                                }}
+                                style={{background:'rgba(16,185,129,0.15)', color:'#10b981', border:'1px solid rgba(16,185,129,0.3)'}}>
+                                <CheckCircle2 size={12} className="mr-1" />Approve
+                              </Button>
+                              <Button size="sm" className="flex-1 h-8"
+                                disabled={reviewingId===req.id}
+                                onClick={async () => {
+                                  setReviewingId(req.id);
+                                  try {
+                                    await api.put(`/orgs/${currentOrg.id}/delegates/swap-requests/${req.id}`, {approved:false, review_note:reviewNotes[req.id]||''});
+                                    toast.success('Swap rejected');
+                                    fetchMembers();
+                                  } catch { toast.error('Failed'); } finally { setReviewingId(null); }
+                                }}
+                                style={{background:'rgba(239,68,68,0.1)', color:'#ef4444', border:'1px solid rgba(239,68,68,0.3)'}}>
+                                <XCircle size={12} className="mr-1" />Reject
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        {!isPending && req.review_note && (
+                          <p className="text-xs" style={{color:'rgba(255,255,255,0.4)'}}>Note: {req.review_note}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
           {/* Members tab */}
           <TabsContent value="members" className="mt-4">
             <div className="rounded-2xl overflow-hidden" style={{background:'var(--surface-1)', border:'1px solid rgba(255,255,255,0.07)'}}>
@@ -134,10 +255,18 @@ export default function SettingsPage() {
                           <p className="text-sm font-medium truncate" style={{color:'rgba(255,255,255,0.85)'}}>{u.name}</p>
                           <p className="text-xs truncate" style={{color:'rgba(255,255,255,0.35)'}}>{u.email}</p>
                         </div>
-                        <span className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full flex-shrink-0"
-                          style={{background:(roleColors[m.role]||'#6b7280')+'18', color:roleColors[m.role]||'#6b7280', border:`1px solid ${roleColors[m.role]||'#6b7280'}25`}}>
-                          <RoleIcon size={10} />{m.role}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          {m.brought_agent_id && (
+                            <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded"
+                              style={{background:'rgba(245,158,11,0.12)', color:'#f59e0b', border:'1px solid rgba(245,158,11,0.2)'}}>
+                              <Globe size={8}/>delegate
+                            </span>
+                          )}
+                          <span className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
+                            style={{background:(roleColors[m.role]||'#6b7280')+'18', color:roleColors[m.role]||'#6b7280', border:`1px solid ${roleColors[m.role]||'#6b7280'}25`}}>
+                            <RoleIcon size={10} />{m.role}
+                          </span>
+                        </div>
                       </div>
                     );
                   })}

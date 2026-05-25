@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Network, Bot, Gavel, GitBranch, MessageSquare,
   Settings, ChevronRight, ChevronLeft, Plus, LogOut, Building2,
-  Copy, Check, Brain, Sparkles, Swords, Store
+  Copy, Check, Brain, Sparkles, Swords, Store, Users2
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOrg } from '../../contexts/OrgContext';
@@ -18,10 +18,12 @@ import { Label } from '../ui/label';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import NotificationCenter from './NotificationCenter';
+import DelegatePickerModal from './DelegatePickerModal';
 
 const NAV = [
   { label: 'Dashboard',     path: '/dashboard',     Icon: LayoutDashboard },
   { label: 'Org Chart',     path: '/org-chart',     Icon: Network },
+  { label: 'My Agents',     path: '/my-agents',     Icon: Users2 },
   { label: 'Agents',        path: '/agents',        Icon: Bot },
   { label: 'Board',         path: '/board',         Icon: Gavel },
   { label: 'Workflows',     path: '/workflows',     Icon: GitBranch },
@@ -44,6 +46,9 @@ export default function Sidebar() {
   const [orgDesc, setOrgDesc] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [agentIdForJoin, setAgentIdForJoin] = useState('');
+  const [selectedDelegateAgent, setSelectedDelegateAgent] = useState(null);
+  const [delegatePickerOpen, setDelegatePickerOpen] = useState(false);
+  const [pendingInviteCode, setPendingInviteCode] = useState('');
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -60,14 +65,22 @@ export default function Sidebar() {
     } catch { toast.error('Failed to create org'); } finally { setSaving(false); }
   };
 
-  const handleJoinOrg = async () => {
+  // Step 1: validate invite code, Step 2: open delegate picker
+  const handleInviteCodeSubmit = () => {
     if (!inviteCode.trim()) return;
+    setPendingInviteCode(inviteCode.trim());
+    setJoinOpen(false);
+    setDelegatePickerOpen(true);
+  };
+
+  // Step 3: join with selected delegate
+  const handleJoinOrg = async (agent) => {
     setSaving(true);
     try {
-      const res = await orgAPI.join({ invite_code: inviteCode.trim(), agent_id: agentIdForJoin.trim() });
+      const res = await orgAPI.join({ invite_code: pendingInviteCode, agent_id: agent.id });
       addOrg(res.data);
-      setJoinOpen(false); setInviteCode(''); setAgentIdForJoin('');
-      toast.success('Joined org!');
+      setInviteCode(''); setPendingInviteCode(''); setSelectedDelegateAgent(null);
+      toast.success(`Joined org! ${agent.name} is your delegate.`);
     } catch (e) { toast.error(e.response?.data?.detail || 'Failed to join org'); } finally { setSaving(false); }
   };
 
@@ -287,32 +300,46 @@ export default function Sidebar() {
         </DialogContent>
       </Dialog>
 
-      {/* Join Org Dialog */}
+      {/* Join Org Dialog — Step 1: Enter invite code */}
       <Dialog open={joinOpen} onOpenChange={setJoinOpen}>
         <DialogContent style={{ background:'hsl(var(--card))', border:'1px solid rgba(255,255,255,0.1)' }}>
-          <DialogHeader><DialogTitle style={{ fontFamily:'Space Grotesk' }}>Join Organization</DialogTitle></DialogHeader>
-          <div className="space-y-3 py-2">
-            <div>
-              <Label className="text-xs mb-1 block" style={{ color:'rgba(255,255,255,0.6)' }}>Invite Code *</Label>
-              <Input value={inviteCode} onChange={e=>setInviteCode(e.target.value)}
-                placeholder="ABCD1234" style={{ background:'hsl(var(--secondary))', border:'1px solid rgba(255,255,255,0.1)' }}/>
-            </div>
-            <div>
-              <Label className="text-xs mb-1 block" style={{ color:'rgba(255,255,255,0.6)' }}>Your Agent ID to bring</Label>
-              <Input value={agentIdForJoin} onChange={e=>setAgentIdForJoin(e.target.value)}
-                placeholder="Agent UUID" style={{ background:'hsl(var(--secondary))', border:'1px solid rgba(255,255,255,0.1)' }}/>
-              <p className="text-xs mt-1" style={{ color:'rgba(255,255,255,0.35)' }}>You must bring one of your agents to join an org</p>
-            </div>
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily:'Space Grotesk' }}>Join Organization</DialogTitle>
+            <p className="text-xs mt-1" style={{ color:'rgba(255,255,255,0.4)' }}>
+              Enter an invite code to continue. Next you'll choose which agent to bring as your delegate.
+            </p>
+          </DialogHeader>
+          <div className="py-3">
+            <Label className="text-xs mb-1.5 block" style={{ color:'rgba(255,255,255,0.6)' }}>Invite Code *</Label>
+            <Input
+              value={inviteCode}
+              onChange={e=>setInviteCode(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleInviteCodeSubmit()}
+              placeholder="ABCD1234"
+              data-testid="join-invite-code"
+              style={{ background:'hsl(var(--secondary))', border:'1px solid rgba(255,255,255,0.1)' }}
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={()=>setJoinOpen(false)}>Cancel</Button>
-            <Button onClick={handleJoinOrg} disabled={saving||!inviteCode.trim()}
+            <Button
+              data-testid="join-next-button"
+              onClick={handleInviteCodeSubmit}
+              disabled={!inviteCode.trim()}
               style={{ background:'hsl(var(--primary))', color:'hsl(var(--primary-foreground))' }}>
-              {saving?'Joining...':'Join'}
+              Next: Choose Delegate →
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Step 2: Delegate picker */}
+      <DelegatePickerModal
+        open={delegatePickerOpen}
+        onClose={() => setDelegatePickerOpen(false)}
+        onSelect={handleJoinOrg}
+        orgName="the organization"
+      />
     </>
   );
 }

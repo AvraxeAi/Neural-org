@@ -878,6 +878,134 @@ class OpenClawAPITester:
         
         return True
 
+    def test_phase5_my_agents_endpoints(self):
+        """Test Phase 5 My Agents endpoints"""
+        print("\n" + "="*60)
+        print("TESTING PHASE 5 - MY AGENTS ENDPOINTS")
+        print("="*60)
+        
+        # GET /api/me/agents - returns all user agents with delegated_to field
+        success, response = self.run_test(
+            "GET /me/agents - List all user agents",
+            "GET",
+            "me/agents",
+            200
+        )
+        
+        if success and response:
+            print(f"   Found {len(response)} agents for current user")
+            if len(response) > 0:
+                agent = response[0]
+                print(f"   Sample agent: {agent.get('name', 'Unknown')}")
+                if 'delegated_to' in agent:
+                    print(f"   ✓ delegated_to field present: {agent['delegated_to']}")
+                else:
+                    print(f"   ⚠️  delegated_to field missing")
+        
+        # GET /api/me/agents/available-for-delegation - returns undelegated agents
+        success, response = self.run_test(
+            "GET /me/agents/available-for-delegation - List undelegated agents",
+            "GET",
+            "me/agents/available-for-delegation",
+            200
+        )
+        
+        if success and response:
+            print(f"   Found {len(response)} agents available for delegation")
+        
+        return True
+
+    def test_phase5_delegate_endpoints(self):
+        """Test Phase 5 Delegate endpoints"""
+        print("\n" + "="*60)
+        print("TESTING PHASE 5 - DELEGATE ENDPOINTS")
+        print("="*60)
+        
+        if not self.org_id:
+            print("❌ No org_id - skipping delegate tests")
+            return False
+        
+        # GET /api/orgs/{id}/delegates/swap-requests - returns empty array or swap requests
+        success, response = self.run_test(
+            "GET /orgs/{id}/delegates/swap-requests - List swap requests",
+            "GET",
+            f"orgs/{self.org_id}/delegates/swap-requests",
+            200
+        )
+        
+        if success:
+            if isinstance(response, list):
+                print(f"   Found {len(response)} swap requests")
+                if len(response) == 0:
+                    print("   ✓ No swap requests (expected for owner)")
+            else:
+                print(f"   ⚠️  Expected array, got: {type(response)}")
+        
+        # GET /api/orgs/{id}/my-delegate - returns null for owner (no brought agent)
+        success, response = self.run_test(
+            "GET /orgs/{id}/my-delegate - Get my delegate agent",
+            "GET",
+            f"orgs/{self.org_id}/my-delegate",
+            200
+        )
+        
+        if success:
+            if response is None or response == {}:
+                print("   ✓ Returns null for owner (no brought agent)")
+            else:
+                print(f"   Delegate info: {response}")
+        
+        return True
+
+    def test_phase5_org_chart_delegate_fields(self):
+        """Test Phase 5 Org Chart delegate fields"""
+        print("\n" + "="*60)
+        print("TESTING PHASE 5 - ORG CHART DELEGATE FIELDS")
+        print("="*60)
+        
+        if not self.org_id:
+            print("❌ No org_id - skipping chart delegate tests")
+            return False
+        
+        # GET /api/orgs/{id}/chart - nodes include is_guest_delegate and is_my_delegate fields
+        success, response = self.run_test(
+            "GET /orgs/{id}/chart - Verify delegate fields in nodes",
+            "GET",
+            f"orgs/{self.org_id}/chart",
+            200
+        )
+        
+        if success and response:
+            print(f"   Chart has {len(response)} nodes")
+            
+            # Check for delegate fields
+            has_guest_delegate_field = False
+            has_my_delegate_field = False
+            
+            for node in response:
+                if 'is_guest_delegate' in node:
+                    has_guest_delegate_field = True
+                if 'is_my_delegate' in node:
+                    has_my_delegate_field = True
+                
+                # Print sample node with delegate info
+                if node.get('is_guest_delegate') or node.get('is_my_delegate'):
+                    print(f"   Node: {node.get('ref_data', {}).get('name', 'Unknown')}")
+                    print(f"     - is_guest_delegate: {node.get('is_guest_delegate', False)}")
+                    print(f"     - is_my_delegate: {node.get('is_my_delegate', False)}")
+            
+            if has_guest_delegate_field:
+                print("   ✓ is_guest_delegate field present in nodes")
+            else:
+                print("   ⚠️  is_guest_delegate field missing")
+            
+            if has_my_delegate_field:
+                print("   ✓ is_my_delegate field present in nodes")
+            else:
+                print("   ⚠️  is_my_delegate field missing")
+        
+        return True
+
     def print_summary(self):
         """Print test summary"""
         print("\n" + "="*60)
@@ -940,6 +1068,14 @@ def main():
     tester.test_phase4_skill_marketplace()
     tester.test_phase4_agent_autonomy()
     tester.test_phase4_org_chart_layouts()
+    
+    # Phase 5 tests
+    print("\n" + "="*60)
+    print("PHASE 5 FEATURE TESTING")
+    print("="*60)
+    tester.test_phase5_my_agents_endpoints()
+    tester.test_phase5_delegate_endpoints()
+    tester.test_phase5_org_chart_delegate_fields()
     
     # Print summary
     all_passed = tester.print_summary()

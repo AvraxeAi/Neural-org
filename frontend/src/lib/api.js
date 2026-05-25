@@ -155,3 +155,14 @@ export const warRoomAPI = {
   listSessions:  oid => api.get(`/orgs/${oid}/war-room/sessions`),
   agentActivity: oid => api.get(`/orgs/${oid}/agent-activity`),
 };
+
+// ── Personal Agents + Delegate System ────────────────────────────────────
+export const myAgentsAPI = {
+  list:              () => api.get('/me/agents'),
+  available:         () => api.get('/me/agents/available-for-delegation'),
+  requestSwap:       (orgId,d) => api.post(`/orgs/${orgId}/delegates/request-swap`, d),
+  listSwapRequests:  orgId => api.get(`/orgs/${orgId}/delegates/swap-requests`),
+  reviewSwap:        (orgId,reqId,d) => api.put(`/orgs/${orgId}/delegates/swap-requests/${reqId}`, d),
+  mySwapRequest:     orgId => api.get(`/orgs/${orgId}/delegates/my-request`),
+  myDelegate:        orgId => api.get(`/orgs/${orgId}/my-delegate`),
+};

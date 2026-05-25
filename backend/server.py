@@ -425,6 +425,15 @@ async def get_org_presence(org_id: str, user=Depends(get_current_user)):
 async def get_chart(org_id: str, user=Depends(get_current_user)):
     await _assert_member(org_id, user["id"])
     nodes_raw = await db.chart_nodes.find({"org_id": org_id}, {"_id": 0}).to_list(200)
+    # Build delegate lookup: agent_id → {user_id, member_id}
+    members = await db.org_members.find({"org_id": org_id}, {"_id": 0}).to_list(100)
+    delegate_map = {
+        m["brought_agent_id"]: {"user_id": m["user_id"], "member_id": m["id"]}
+        for m in members if m.get("brought_agent_id")
+    }
+    my_member = next((m for m in members if m["user_id"] == user["id"]), {})
+    my_delegate_agent_id = my_member.get("brought_agent_id")
+
     nodes = []
     for n in nodes_raw:
         if n["node_type"] == "user":
@@ -432,6 +441,11 @@ async def get_chart(org_id: str, user=Depends(get_current_user)):
         else:
             ref = await db.agents.find_one({"id": n["node_ref_id"]}, {"_id": 0})
         n["ref_data"] = serialize_doc(ref) if ref else {}
+        # Mark guest delegates and primary delegate
+        n["is_guest_delegate"] = n["node_type"] == "agent" and n["node_ref_id"] in delegate_map
+        n["is_my_delegate"]    = n["node_ref_id"] == my_delegate_agent_id
+        if n["is_guest_delegate"]:
+            n["delegate_info"] = delegate_map.get(n["node_ref_id"], {})
         nodes.append(serialize_doc(n))
     return nodes
 
@@ -1622,6 +1636,185 @@ async def agent_activity_feed(org_id: str, user=Depends(get_current_user)):
         })
     return activity
 
+# ════════════════════════════════════════════════════════════════════════════
+# ⑲ PERSONAL AGENTS + DELEGATE SYSTEM (Phase 5)
+# ════════════════════════════════════════════════════════════════════════════
+
+class DelegateSwapReq(BaseModel):
+    new_agent_id: str
+    reason: str = ""
+
+class SwapReviewReq(BaseModel):
+    approved: bool
+    review_note: str = ""
+
+@api_router.get("/me/agents")
+async def my_agents(user=Depends(get_current_user)):
+    """All agents created by the current user with delegation status."""
+    agents = await db.agents.find({"created_by": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    result = []
+    for agent in agents:
+        a = serialize_doc(agent)
+        # Check if this agent is a delegate in any org
+        delegation = await db.org_members.find_one({"brought_agent_id": agent["id"]})
+        if delegation:
+            org = await db.orgs.find_one({"id": delegation["org_id"]}, {"_id": 0})
+            a["delegated_to"] = {
+                "org": serialize_doc(org) if org else {},
+                "member_id": delegation["id"],
+                "role": delegation.get("role", "member"),
+                "joined_at": delegation.get("joined_at"),
+            }
+        else:
+            a["delegated_to"] = None
+        # Task/goal counts
+        a["pending_tasks"]  = await db.agent_tasks.count_documents({"agent_id": agent["id"], "status": "pending"})
+        a["active_goals"]   = await db.agent_goals.count_documents({"agent_id": agent["id"], "status": "active"})
+        a["thought_count"]  = await db.agent_thoughts.count_documents({"agent_id": agent["id"]})
+        result.append(a)
+    return result
+
+@api_router.get("/me/agents/available-for-delegation")
+async def agents_available_for_delegation(user=Depends(get_current_user)):
+    """Agents that are NOT yet delegates in any org — available to bring on invite."""
+    agents = await db.agents.find({"created_by": user["id"]}, {"_id": 0}).to_list(200)
+    result = []
+    for agent in agents:
+        delegation = await db.org_members.find_one({"brought_agent_id": agent["id"]})
+        if not delegation:
+            result.append(serialize_doc(agent))
+    return result
+
+# ── Delegate swap requests ────────────────────────────────────────────────
+@api_router.post("/orgs/{org_id}/delegates/request-swap")
+async def request_delegate_swap(org_id: str, req: DelegateSwapReq, user=Depends(get_current_user)):
+    """User requests to replace their current delegate with a different agent."""
+    member = await db.org_members.find_one({"org_id": org_id, "user_id": user["id"]})
+    if not member:
+        raise HTTPException(403, "Not a member of this org")
+    if not member.get("brought_agent_id"):
+        raise HTTPException(400, "You have no delegate in this org")
+    # Verify new agent belongs to user
+    new_agent = await db.agents.find_one({"id": req.new_agent_id, "created_by": user["id"]})
+    if not new_agent:
+        raise HTTPException(400, "Agent not found or does not belong to you")
+    # Check new agent isn't already a delegate elsewhere
+    existing = await db.org_members.find_one({"brought_agent_id": req.new_agent_id})
+    if existing and existing["org_id"] != org_id:
+        raise HTTPException(400, "That agent is already a delegate in another org")
+    # Create request
+    swap_req = {
+        "id": gen_id(), "org_id": org_id,
+        "requesting_user_id": user["id"],
+        "requesting_user_name": user["name"],
+        "current_agent_id": member["brought_agent_id"],
+        "new_agent_id": req.new_agent_id,
+        "new_agent_name": new_agent["name"],
+        "reason": req.reason,
+        "status": "pending",
+        "requested_at": now_iso(),
+        "reviewed_by": None, "reviewed_at": None, "review_note": "",
+    }
+    await db.delegate_swap_requests.insert_one(swap_req)
+    result = serialize_doc(swap_req)
+    await event_bus.publish(OrgEvent(
+        event_type="delegate.swap_requested", org_id=org_id, actor_id=user["id"],
+        payload={**result, "requesting_user_name": user["name"]}
+    ))
+    await _create_notif(org_id, None, "delegate_swap_request",
+        f"Delegate swap request from {user['name']}",
+        f"Wants to swap to: {new_agent['name']}",
+        "/settings")
+    return result
+
+@api_router.get("/orgs/{org_id}/delegates/swap-requests")
+async def list_swap_requests(org_id: str, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    requests = await db.delegate_swap_requests.find(
+        {"org_id": org_id}, {"_id": 0}
+    ).sort("requested_at", -1).to_list(50)
+    result = []
+    for r in requests:
+        r = serialize_doc(r)
+        # Enrich with agent details
+        cur  = await db.agents.find_one({"id": r["current_agent_id"]}, {"_id": 0})
+        new_ = await db.agents.find_one({"id": r["new_agent_id"]}, {"_id": 0})
+        r["current_agent"]  = serialize_doc(cur)  if cur  else {}
+        r["new_agent"]      = serialize_doc(new_) if new_ else {}
+        result.append(r)
+    return result
+
+@api_router.put("/orgs/{org_id}/delegates/swap-requests/{request_id}")
+async def review_swap_request(org_id: str, request_id: str, req: SwapReviewReq, user=Depends(get_current_user)):
+    """Owner/board reviews a delegate swap request."""
+    await _assert_min_role(org_id, user["id"], "board")
+    swap_req = await db.delegate_swap_requests.find_one({"id": request_id, "org_id": org_id})
+    if not swap_req:
+        raise HTTPException(404, "Request not found")
+    if swap_req["status"] != "pending":
+        raise HTTPException(400, "Request already reviewed")
+    new_status = "approved" if req.approved else "rejected"
+    await db.delegate_swap_requests.update_one(
+        {"id": request_id},
+        {"$set": {
+            "status": new_status,
+            "reviewed_by": user["id"],
+            "reviewed_at": now_iso(),
+            "review_note": req.review_note,
+        }}
+    )
+    if req.approved:
+        # Execute the swap: update org_members + move agent to new org
+        old_agent_id = swap_req["current_agent_id"]
+        new_agent_id = swap_req["new_agent_id"]
+        await db.org_members.update_one(
+            {"org_id": org_id, "user_id": swap_req["requesting_user_id"]},
+            {"$set": {"brought_agent_id": new_agent_id}}
+        )
+        # Remove old agent's chart node, add new agent's chart node
+        await db.chart_nodes.delete_one({"org_id": org_id, "node_ref_id": old_agent_id})
+        all_nodes = await db.chart_nodes.find({"org_id": org_id}).to_list(200)
+        await db.chart_nodes.insert_one({
+            "id": gen_id(), "org_id": org_id, "node_ref_id": new_agent_id,
+            "node_type": "agent", "manager_id": None, "is_board_member": False,
+            "position": {"x": 100 + (len(all_nodes) % 4) * 250, "y": 100 + (len(all_nodes) // 4) * 160},
+            "created_at": now_iso(),
+        })
+        # Update agent's org_id
+        await db.agents.update_one({"id": new_agent_id}, {"$set": {"org_id": org_id}})
+        await event_bus.publish(OrgEvent(
+            event_type="delegate.swapped", org_id=org_id, actor_id=user["id"],
+            payload={"old_agent_id": old_agent_id, "new_agent_id": new_agent_id}
+        ))
+        await _create_notif(org_id, swap_req["requesting_user_id"], "delegate_swap_approved",
+            "Your delegate swap was approved!",
+            f"Your new delegate is now active in the org.", "/org-chart")
+    else:
+        await _create_notif(org_id, swap_req["requesting_user_id"], "delegate_swap_rejected",
+            "Your delegate swap was rejected",
+            req.review_note or "The org admin declined your request.", "/settings")
+
+    return {"ok": True, "status": new_status}
+
+@api_router.get("/orgs/{org_id}/delegates/my-request")
+async def my_swap_request(org_id: str, user=Depends(get_current_user)):
+    """Get the current user's pending swap request, if any."""
+    await _assert_member(org_id, user["id"])
+    req = await db.delegate_swap_requests.find_one(
+        {"org_id": org_id, "requesting_user_id": user["id"], "status": "pending"},
+        {"_id": 0}
+    )
+    return serialize_doc(req) if req else None
+
+@api_router.get("/orgs/{org_id}/my-delegate")
+async def my_delegate(org_id: str, user=Depends(get_current_user)):
+    """Get current user's delegate agent in this org."""
+    member = await db.org_members.find_one({"org_id": org_id, "user_id": user["id"]})
+    if not member or not member.get("brought_agent_id"):
+        return None
+    agent = await db.agents.find_one({"id": member["brought_agent_id"]}, {"_id": 0})
+    return serialize_doc(agent) if agent else None
+
 # ── Seeds + Indexes ───────────────────────────────────────────────────────
 SKILLS_SEED = [
     {"id": "skill-coding",   "name": "Coding",        "description": "Write, review, and debug code", "category": "technical"},
@@ -1647,6 +1840,7 @@ async def startup():
         ("agent_goals", [([("agent_id",1)], {})]),
         ("agent_thoughts", [([("agent_id",1),("created_at",-1)], {})]),
         ("org_installed_skills", [([("org_id",1),("skill_id",1)], {})]),
+        ("delegate_swap_requests", [([("org_id",1),("status",1)], {})]),
     ]:
         for idx in idxs:
             try:

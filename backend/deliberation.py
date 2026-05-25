@@ -35,10 +35,11 @@ You are participating in a board deliberation for an AI organization.
 When given a proposal, respond with a JSON object (no markdown fences) with:
 {{
   "stance": "approve" or "reject" or "abstain" or "uncertain",
-  "confidence": <float 0.0-1.0>,
-  "reasoning": "<1-2 sentence explanation>",
-  "concerns": ["<concern1>", "<concern2>"],
-  "questions": ["<question for others>"]
+  "confidence": <float 0.0-1.0, how confident you are in your stance>,
+  "risk_score": <float 0.0-1.0, how risky this proposal is (0=safe, 1=very risky)>,
+  "reasoning": "<1-2 sentence explanation of your position>",
+  "concerns": ["<specific concern>", "<another concern>"],
+  "questions": ["<question for others to consider>"]
 }}
 Be specific to your role. Output ONLY valid JSON."""
 
@@ -98,6 +99,7 @@ def _parse_snapshot(text: str, agent, round_num: int) -> dict:
         "agent_color": agent.get("avatar_color", "#22d3ee"),
         "stance": raw.get("stance", "uncertain"),
         "confidence": min(1.0, max(0.0, float(raw.get("confidence", 0.5)))),
+        "risk_score": min(1.0, max(0.0, float(raw.get("risk_score", 0.3)))),
         "reasoning": raw.get("reasoning", "No reasoning provided"),
         "concerns": raw.get("concerns", []),
         "questions": raw.get("questions", []),

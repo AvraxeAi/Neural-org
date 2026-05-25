@@ -16,6 +16,7 @@ import DeliberationPage from './pages/DeliberationPage';
 import MemoryPage from './pages/MemoryPage';
 import WarRoomPage from './pages/WarRoomPage';
 import SkillMarketplacePage from './pages/SkillMarketplacePage';
+import MyAgentsPage from './pages/MyAgentsPage';
 import AppLayout from './components/Layout/AppLayout';
 
 function ProtectedRoute({ children }) {
@@ -59,6 +60,7 @@ function App() {
             <Route path="/deliberation" element={<ProtectedRoute><DeliberationPage /></ProtectedRoute>} />
             <Route path="/memory"      element={<ProtectedRoute><MemoryPage /></ProtectedRoute>} />
             <Route path="/marketplace" element={<ProtectedRoute><SkillMarketplacePage /></ProtectedRoute>} />
+            <Route path="/my-agents"   element={<ProtectedRoute><MyAgentsPage /></ProtectedRoute>} />
             <Route path="/messages"    element={<ProtectedRoute><MessagesPage /></ProtectedRoute>} />
             <Route path="/settings"    element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
             <Route path="/"            element={<Navigate to="/dashboard" replace />} />

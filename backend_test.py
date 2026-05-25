@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Backend API Test Suite for Org Chart Governance (Phase 6)
-Tests all governance-related endpoints
+Tests all governance-related endpoints including governed-mode proposal creation.
 """
 import requests
 import sys
@@ -153,7 +153,7 @@ class OrgChartGovernanceTest:
                 self.node_id = chart_data['nodes'][0]['id']
                 print(f"   ✓ Using first node: {self.node_id}")
 
-        # 3. Test inline node update (draft mode)
+        # 3. Test inline node update (draft mode) — should apply instantly and write audit log
         if self.node_id:
             success, update_data = self.run_test(
                 "PUT /chart/nodes/{id}/inline - Update node in draft mode",
@@ -167,6 +167,12 @@ class OrgChartGovernanceTest:
                     "provider_badge": "Claude"
                 }
             )
+            if success:
+                governed_flag = update_data.get("governed")
+                if governed_flag is False:
+                    print(f"   ✅ Draft mode: governed=False, change applied directly")
+                else:
+                    print(f"   ⚠️  governed flag: {governed_flag}")
 
         # 4. Get change proposals (should be empty initially)
         success, proposals = self.run_test(
@@ -234,19 +240,38 @@ class OrgChartGovernanceTest:
             else:
                 print(f"   ❌ Chart should be governed but is_governed={is_governed}")
 
-        # 3. Try inline update in governed mode (should fail)
+        # 3. Inline update in governed mode should auto-create proposals (200, not 400)
         if self.node_id:
-            success, _ = self.run_test(
-                "PUT /chart/nodes/{id}/inline - Should fail in governed mode",
+            success, inline_governed = self.run_test(
+                "PUT /chart/nodes/{id}/inline - Creates proposals in governed mode",
                 "PUT",
                 f"orgs/{self.org_id}/chart/nodes/{self.node_id}/inline",
-                400,  # Expecting 400 error
-                data={"name": "Should Fail"}
+                200,
+                data={"name": "Governed Name Change", "reason": "testing governed inline"}
             )
             if success:
-                print(f"   ✅ Correctly blocked inline update in governed mode")
+                governed_flag = inline_governed.get("governed")
+                proposal_ids = inline_governed.get("proposal_ids", [])
+                if governed_flag and proposal_ids:
+                    print(f"   ✅ Correctly created {len(proposal_ids)} proposal(s) in governed mode")
+                else:
+                    print(f"   ❌ Expected governed=True and proposal_ids, got: {inline_governed}")
 
-        # 4. Create a change proposal
+        # 4. Edge label update in governed mode should create a proposal
+        success, edge_gov = self.run_test(
+            "PUT /chart/edge-labels - Creates proposal in governed mode",
+            "PUT",
+            f"orgs/{self.org_id}/chart/edge-labels",
+            200,
+            data={"source": "node-a", "target": "node-b", "label": "reports to", "reason": "governed edge test"}
+        )
+        if success:
+            if edge_gov.get("governed") and edge_gov.get("proposal_id"):
+                print(f"   ✅ Edge label proposal created: {edge_gov['proposal_id']}")
+            else:
+                print(f"   ❌ Expected governed=True and proposal_id, got: {edge_gov}")
+
+        # 5. Create a change proposal
         if self.node_id:
             success, proposal_data = self.run_test(
                 "POST /chart/change-proposals - Create proposal",
@@ -266,7 +291,7 @@ class OrgChartGovernanceTest:
                 proposal_id = proposal_data.get('id')
                 print(f"   ✓ Proposal created: {proposal_id}")
                 
-                # 5. Vote on the proposal
+                # 6. Vote on the proposal
                 if proposal_id:
                     success, vote_data = self.run_test(
                         "POST /chart/change-proposals/{id}/vote - Vote approve",

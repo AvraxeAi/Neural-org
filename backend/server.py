@@ -2057,14 +2057,16 @@ async def _apply_chart_proposal(proposal: dict, org_id: str):
     sid = proposal["subject_id"]
     after = proposal["after"]
     if ct in ("node_name", "node_role", "node_department"):
-        key = {"node_name": "ref_name", "node_role": "ref_role", "node_department": "ref_department"}.get(ct, ct)
-        # Update the underlying agent or user record
-        agent = await db.agents.find_one({"id": proposal.get("ref_id", sid)})
+        node = await db.chart_nodes.find_one({"id": sid, "org_id": org_id})
+        ref_id = node["node_ref_id"] if node else None
+        agent = await db.agents.find_one({"id": ref_id}) if ref_id else None
         if agent:
             update_field = {"node_name": "name", "node_role": "role", "node_department": "department"}.get(ct, "name")
             await db.agents.update_one({"id": agent["id"]}, {"$set": {update_field: after.get("value", "")}})
     elif ct == "node_provider":
-        agent = await db.agents.find_one({"id": proposal.get("ref_id", sid)})
+        node = await db.chart_nodes.find_one({"id": sid, "org_id": org_id})
+        ref_id = node["node_ref_id"] if node else None
+        agent = await db.agents.find_one({"id": ref_id}) if ref_id else None
         if agent:
             await db.agents.update_one({"id": agent["id"]},
                 {"$set": {"provider_badge": after.get("provider_badge", "Custom"),
@@ -2108,36 +2110,108 @@ async def get_edge_labels(org_id: str, user=Depends(get_current_user)):
 
 @api_router.put("/orgs/{org_id}/chart/edge-labels")
 async def update_edge_label(org_id: str, data: dict, user=Depends(get_current_user)):
-    """Update or create an edge label in draft mode."""
+    """Update or create an edge label. In governed mode, creates a change proposal."""
     await _assert_member(org_id, user["id"])
     governed = await _is_governed(org_id)
+    source = data.get("source", ""); target = data.get("target", ""); label = data.get("label", "")
     if governed:
-        raise HTTPException(400, "Chart is governed. Use change proposals.")
-    source = data.get("source"); target = data.get("target"); label = data.get("label", "")
+        existing = await db.chart_edge_labels.find_one({"org_id": org_id, "source": source, "target": target})
+        before_label = existing["label"] if existing else ""
+        proposal = {
+            "id": gen_id(), "org_id": org_id,
+            "change_type": "edge_label",
+            "subject_id": f"{source}__{target}", "subject_name": f"{source} → {target}",
+            "before": {"label": before_label}, "after": {"label": label},
+            "reason": data.get("reason", ""),
+            "edge_source": source, "edge_target": target,
+            "proposed_by": user["id"], "proposed_by_name": user["name"],
+            "status": "pending", "votes": [],
+            "created_at": now_iso(), "applied_at": None,
+        }
+        await db.org_chart_change_proposals.insert_one(proposal)
+        await _log_audit(org_id, "edge_label", f"{source}__{target}", f"{source} → {target}",
+                         {"label": before_label}, {"label": label},
+                         user["id"], user["name"], "proposed", data.get("reason", ""))
+        await event_bus.publish(OrgEvent(
+            event_type="chart.proposal_created", org_id=org_id, actor_id=user["id"],
+            payload={"change_type": "edge_label", "subject_id": f"{source}__{target}"}
+        ))
+        return {"ok": True, "governed": True, "proposal_id": proposal["id"]}
     await db.chart_edge_labels.update_one(
         {"org_id": org_id, "source": source, "target": target},
         {"$set": {"label": label, "updated_at": now_iso()}},
         upsert=True
     )
+    await _log_audit(org_id, "edge_label", f"{source}__{target}", f"{source} → {target}",
+                     {}, {"label": label}, user["id"], user["name"], "draft_applied", "")
     await event_bus.publish(OrgEvent(
         event_type="chart.updated", org_id=org_id, actor_id=user["id"],
         payload={"source": source, "target": target, "label": label}
     ))
-    return {"ok": True}
+    return {"ok": True, "governed": False}
 
 # ── Enhanced chart node update (governance-aware) ─────────────────────────
 @api_router.put("/orgs/{org_id}/chart/nodes/{node_id}/inline")
 async def update_chart_node_inline(org_id: str, node_id: str, data: dict, user=Depends(get_current_user)):
-    """Draft-mode inline node update: name, role, department, provider_badge."""
+    """Inline node update. Draft mode: applies instantly. Governed mode: creates proposals."""
     await _assert_member(org_id, user["id"])
     governed = await _is_governed(org_id)
-    if governed:
-        raise HTTPException(400, "Chart is governed. Use /chart/change-proposals.")
     node = await db.chart_nodes.find_one({"id": node_id, "org_id": org_id})
     if not node: raise HTTPException(404)
-    # Update the underlying agent or user
-    ref_id = node["node_ref_id"]
-    if node["node_type"] == "agent":
+    ref_id = node.get("node_ref_id")
+    subject_name = node.get("label") or node_id
+    reason = data.get("reason", "")
+
+    if governed:
+        # In governed mode, create a change proposal for each modified field
+        agent = await db.agents.find_one({"id": ref_id}, {"_id": 0}) if ref_id else None
+        proposal_ids = []
+
+        async def _make_proposal(change_type, before, after, **extra):
+            p = {
+                "id": gen_id(), "org_id": org_id,
+                "change_type": change_type,
+                "subject_id": node_id, "subject_name": subject_name,
+                "before": before, "after": after, "reason": reason,
+                "edge_source": "", "edge_target": "",
+                "proposed_by": user["id"], "proposed_by_name": user["name"],
+                "status": "pending", "votes": [],
+                "created_at": now_iso(), "applied_at": None,
+                **extra,
+            }
+            await db.org_chart_change_proposals.insert_one(p)
+            await _log_audit(org_id, change_type, node_id, subject_name,
+                             before, after, user["id"], user["name"], "proposed", reason)
+            proposal_ids.append(p["id"])
+
+        if "name" in data and agent:
+            await _make_proposal("node_name", {"value": agent.get("name", "")}, {"value": data["name"]})
+        if "role" in data and agent:
+            await _make_proposal("node_role", {"value": agent.get("role", "")}, {"value": data["role"]})
+        if "department" in data and agent:
+            await _make_proposal("node_department", {"value": agent.get("department", "")}, {"value": data["department"]})
+        if ("provider_badge" in data or "model" in data) and agent:
+            await _make_proposal("node_provider",
+                {"provider_badge": agent.get("provider_badge", "Custom"), "model": agent.get("model", "")},
+                {"provider_badge": data.get("provider_badge", agent.get("provider_badge", "Custom")),
+                 "model": data.get("model", agent.get("model", ""))})
+        if "manager_id" in data:
+            await _make_proposal("manager_change",
+                {"manager_id": node.get("manager_id")}, {"manager_id": data["manager_id"]})
+        if "is_board_member" in data:
+            await _make_proposal("board_seat",
+                {"is_board_member": node.get("is_board_member", False)},
+                {"is_board_member": data["is_board_member"]})
+
+        if proposal_ids:
+            await event_bus.publish(OrgEvent(
+                event_type="chart.proposal_created", org_id=org_id, actor_id=user["id"],
+                payload={"node_id": node_id, "proposal_ids": proposal_ids}
+            ))
+        return {"ok": True, "governed": True, "proposal_ids": proposal_ids}
+
+    # Draft mode: apply directly
+    if node.get("node_type") == "agent" and ref_id:
         update = {}
         if "name"           in data: update["name"]           = data["name"]
         if "role"           in data: update["role"]           = data["role"]
@@ -2146,19 +2220,28 @@ async def update_chart_node_inline(org_id: str, node_id: str, data: dict, user=D
         if "model"          in data: update["model"]          = data["model"]
         if update:
             await db.agents.update_one({"id": ref_id}, {"$set": update})
+            await _log_audit(org_id, "node_inline_update", node_id, subject_name,
+                             {}, update, user["id"], user["name"], "draft_applied", reason)
     if "manager_id" in data:
+        before_mgr = node.get("manager_id")
         await db.chart_nodes.update_one({"id": node_id, "org_id": org_id}, {"$set": {"manager_id": data["manager_id"]}})
+        await _log_audit(org_id, "manager_change", node_id, subject_name,
+                         {"manager_id": before_mgr}, {"manager_id": data["manager_id"]},
+                         user["id"], user["name"], "draft_applied", reason)
     if "is_board_member" in data:
+        before_board = node.get("is_board_member", False)
         await db.chart_nodes.update_one({"id": node_id, "org_id": org_id}, {"$set": {"is_board_member": data["is_board_member"]}})
+        await _log_audit(org_id, "board_seat", node_id, subject_name,
+                         {"is_board_member": before_board}, {"is_board_member": data["is_board_member"]},
+                         user["id"], user["name"], "draft_applied", reason)
     if "position" in data:
         await db.chart_nodes.update_one({"id": node_id, "org_id": org_id}, {"$set": {"position": data["position"]}})
     await event_bus.publish(OrgEvent(
         event_type="chart.updated", org_id=org_id, actor_id=user["id"],
         payload={"node_id": node_id}
     ))
-    # Return updated node
-    agent = await db.agents.find_one({"id": ref_id}, {"_id": 0}) if node["node_type"] == "agent" else None
-    return {"ok": True, "provider_badge": get_provider_badge(agent) if agent else "Custom"}
+    agent = await db.agents.find_one({"id": ref_id}, {"_id": 0}) if ref_id and node.get("node_type") == "agent" else None
+    return {"ok": True, "governed": False, "provider_badge": get_provider_badge(agent) if agent else "Custom"}
 
 # ── Enrich chart endpoint with provider badge ─────────────────────────────
 

@@ -51,9 +51,92 @@
   font-size: 13px;
   font-weight: 500;
   color: rgba(255,255,255,0.8);
+  transition: all 0.18s ease;
 }
 .palette-item:hover {
   border-color: rgba(34,211,238,0.3);
   background: hsla(190, 60%, 14%, 0.4);
+  transform: translateX(2px);
 }
 .palette-item:active { cursor: grabbing; }
+
+/* Glass panel utility */
+.glass {
+  background: var(--surface-1);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+.glass-sm {
+  background: rgba(255,255,255,0.04);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.07);
+}
+
+/* Card hover effect */
+.card-hover {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+}
+
+/* Focus ring override */
+.focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(34,211,238,0.4);
+}
+
+/* Gradient text utilities */
+.text-gradient {
+  background: linear-gradient(135deg, #22d3ee, #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Metric card */
+.metric-card {
+  background: var(--surface-1);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 16px;
+  padding: 16px;
+  backdrop-filter: blur(12px);
+  transition: all 0.2s ease;
+}
+.metric-card:hover {
+  border-color: rgba(34,211,238,0.2);
+  transform: translateY(-2px);
+}
+
+/* Subtle horizontal rule */
+.divider {
+  border: none;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  margin: 12px 0;
+}
+
+/* Empty state */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+}
+.empty-state-icon {
+  color: rgba(255,255,255,0.12);
+  margin-bottom: 12px;
+}
+
+/* Tag/badge variants */
+.tag-cyan  { background: rgba(34,211,238,0.1);  color: #22d3ee;  border: 1px solid rgba(34,211,238,0.2); }
+.tag-amber { background: rgba(245,158,11,0.1); color: #f59e0b; border: 1px solid rgba(245,158,11,0.2); }
+.tag-green { background: rgba(16,185,129,0.1); color: #10b981; border: 1px solid rgba(16,185,129,0.2); }
+.tag-red   { background: rgba(239,68,68,0.1);  color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
+.tag-purple{ background: rgba(167,139,250,0.1);color: #a78bfa; border: 1px solid rgba(167,139,250,0.2); }
+.tag-base  { border-radius: 6px; padding: 2px 6px; font-size: 10px; font-weight: 500; }

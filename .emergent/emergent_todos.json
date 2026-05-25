@@ -1,34 +1,22 @@
 [
   {
-    "content": "Personal Org Agent Roster (My Agents page + delegation status)",
+    "content": "Backend: governance state, change proposals, audit log, version snapshots",
     "status": "completed"
   },
   {
-    "content": "Invite Acceptance Flow (delegate picker UI replacing UUID text input)",
+    "content": "Frontend: GovernanceBar + NodeEditPanel + ChangeProposalModal + CustomEdge",
     "status": "completed"
   },
   {
-    "content": "Delegate Swap Request system (request + owner approval)",
+    "content": "Frontend: Updated OrgChartPage (governance-aware, undo/redo, inline edit)",
     "status": "completed"
   },
   {
-    "content": "Org Chart: home/guest/delegate visual badges",
-    "status": "completed"
-  },
-  {
-    "content": "War Room: risk_score in thought snapshots",
-    "status": "completed"
-  },
-  {
-    "content": "Settings: swap request approval UI",
-    "status": "completed"
-  },
-  {
-    "content": "Backend: /me/agents, swap requests, chart is_guest_delegate, risk_score",
+    "content": "Frontend: Provider badges on OrgChartNode + BoardPage structure changes section",
     "status": "completed"
   },
   {
     "content": "End-to-end testing",
-    "status": "completed"
+    "status": "in_progress"
   }
 ]

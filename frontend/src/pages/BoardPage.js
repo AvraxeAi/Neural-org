@@ -3,10 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useOrg } from '../contexts/OrgContext';
 import { useWS } from '../contexts/WSContext';
 import { boardAPI, workflowAPI } from '../lib/api';
+import api from '../lib/api';
 import { toast } from 'sonner';
 import {
   Gavel, Plus, ThumbsUp, ThumbsDown, MessageCircle,
-  CheckCircle2, XCircle, Clock, Zap, ChevronRight, X, Send
+  CheckCircle2, XCircle, Clock, Zap, ChevronRight, X, Send,
+  Network, ArrowRight, GitBranch, User, Bot, Shield
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Textarea } from '../components/ui/textarea';
@@ -14,6 +16,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { ScrollArea } from '../components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from '../components/ui/dialog';
@@ -223,6 +226,10 @@ export default function BoardPage() {
   const [workflows, setWorkflows] = useState([]);
   const [form, setForm] = useState({ title:'', description:'', workflow_id:'', voting_type:'majority' });
   const [saving, setSaving] = useState(false);
+  const [boardTab, setBoardTab] = useState('proposals');
+  const [chartProposals, setChartProposals] = useState([]);
+  const [votingChartProp, setVotingChartProp] = useState(null);
+  const [chartVoteNote, setChartVoteNote] = useState('');
 
   const fetchProposals = useCallback(async () => {
     if (!currentOrg) return;
@@ -235,7 +242,15 @@ export default function BoardPage() {
     setLoading(false);
   }, [currentOrg]);
 
-  useEffect(() => { fetchProposals(); }, [fetchProposals]);
+  const fetchChartProposals = useCallback(async () => {
+    if (!currentOrg) return;
+    try {
+      const res = await api.get(`/orgs/${currentOrg.id}/chart/change-proposals`);
+      setChartProposals(res.data);
+    } catch {}
+  }, [currentOrg]);
+
+  useEffect(() => { fetchProposals(); fetchChartProposals(); }, [fetchProposals, fetchChartProposals]);
 
   const fetchSelected = useCallback(async () => {
     if (!selectedProposal) return;
@@ -250,7 +265,10 @@ export default function BoardPage() {
     const u3 = on('comment_added', () => fetchSelected());
     const u4 = on('proposal_approved', () => { fetchProposals(); toast.success('Proposal approved! Workflow triggered.'); });
     const u5 = on('proposal_rejected', () => { fetchProposals(); toast.error('Proposal rejected.'); });
-    return () => { u1(); u2(); u3(); u4(); u5(); };
+    const u6 = on('chart.proposal_created', () => { fetchChartProposals(); toast.info('New org chart change proposal'); });
+    const u7 = on('chart.proposal_approved', () => { fetchChartProposals(); toast.success('Chart change approved!'); });
+    const u8 = on('chart.proposal_rejected', () => { fetchChartProposals(); toast.error('Chart change rejected'); });
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); };
   }, [on, fetchProposals, fetchSelected]);
 
   const handleCreate = async () => {
@@ -285,39 +303,117 @@ export default function BoardPage() {
     setSelectedProposal(res.data);
   };
 
+  const voteChartProposal = async (proposalId, value) => {
+    try {
+      await api.post(`/orgs/${currentOrg.id}/chart/change-proposals/${proposalId}/vote`, { value, note: chartVoteNote });
+      toast.success(`Vote cast: ${value}`);
+      setVotingChartProp(null); setChartVoteNote('');
+      fetchChartProposals();
+    } catch { toast.error('Vote failed'); }
+  };
+
   if (loading) return <div className="h-full flex items-center justify-center"><div className="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" /></div>;
+
+  const pendingChartProps = chartProposals.filter(p => p.status === 'pending');
 
   return (
     <div className="h-full flex" data-testid="board-page">
       {/* Left: Proposals list */}
       <div className="w-72 flex-shrink-0 flex flex-col" style={{borderRight:'1px solid rgba(255,255,255,0.07)'}}>
-        <div className="p-4 flex items-center justify-between" style={{borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-          <div>
-            <h2 className="text-sm font-semibold" style={{fontFamily:'Space Grotesk'}}>Board</h2>
-            <p className="text-xs" style={{color:'rgba(255,255,255,0.35)'}}>{proposals.length} proposals</p>
+        <Tabs value={boardTab} onValueChange={setBoardTab} className="flex flex-col h-full">
+          <div className="p-3" style={{borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-sm font-semibold" style={{fontFamily:'Space Grotesk'}}>Board</h2>
+              {boardTab === 'proposals' && (
+                <Button size="sm" data-testid="create-proposal-button" onClick={() => setCreateOpen(true)}
+                  style={{background:'hsl(var(--primary))', color:'hsl(var(--primary-foreground))', height:26, fontSize:11, padding:'0 8px'}}>
+                  <Plus size={11} className="mr-1"/>New
+                </Button>
+              )}
+            </div>
+            <TabsList className="w-full" style={{background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)'}}>
+              <TabsTrigger value="proposals" className="flex-1 text-xs">
+                Proposals ({proposals.length})
+              </TabsTrigger>
+              <TabsTrigger value="chart" className="flex-1 text-xs">
+                Structure
+                {pendingChartProps.length > 0 && (
+                  <span className="ml-1 px-1 rounded-full text-[9px]" style={{background:'#f59e0b', color:'#000', fontWeight:'bold'}}>
+                    {pendingChartProps.length}
+                  </span>
+                )}
+              </TabsTrigger>
+            </TabsList>
           </div>
-          <Button size="sm" data-testid="create-proposal-button" onClick={() => setCreateOpen(true)}
-            style={{background:'hsl(var(--primary))', color:'hsl(var(--primary-foreground))', height:28, fontSize:12, padding:'0 10px'}}>
-            <Plus size={12} className="mr-1"/>New
-          </Button>
-        </div>
-        <ScrollArea className="flex-1">
-          <div className="p-3 space-y-2">
-            {proposals.map(p => (
-              <ProposalCard
-                key={p.id} proposal={p}
-                isSelected={selectedProposal?.id === p.id}
-                onClick={() => handleSelectProposal(p)}
-              />
-            ))}
-            {proposals.length === 0 && (
-              <div className="text-center py-12">
-                <Gavel size={28} className="mx-auto mb-2" style={{color:'rgba(255,255,255,0.2)'}} />
-                <p className="text-xs" style={{color:'rgba(255,255,255,0.3)'}}>No proposals yet</p>
+
+          {/* Standard proposals */}
+          <TabsContent value="proposals" className="flex-1 overflow-hidden m-0">
+            <ScrollArea className="h-full">
+              <div className="p-3 space-y-2">
+                {proposals.map(p => (
+                  <ProposalCard key={p.id} proposal={p}
+                    isSelected={selectedProposal?.id === p.id}
+                    onClick={() => handleSelectProposal(p)} />
+                ))}
+                {proposals.length === 0 && (
+                  <div className="text-center py-12">
+                    <Gavel size={28} className="mx-auto mb-2" style={{color:'rgba(255,255,255,0.2)'}} />
+                    <p className="text-xs" style={{color:'rgba(255,255,255,0.3)'}}>No proposals yet</p>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </ScrollArea>
+            </ScrollArea>
+          </TabsContent>
+
+          {/* Chart structure proposals */}
+          <TabsContent value="chart" className="flex-1 overflow-hidden m-0">
+            <ScrollArea className="h-full">
+              <div className="p-3 space-y-2">
+                {chartProposals.length === 0 ? (
+                  <div className="text-center py-10">
+                    <Network size={24} className="mx-auto mb-2" style={{color:'rgba(255,255,255,0.2)'}}/>
+                    <p className="text-xs" style={{color:'rgba(255,255,255,0.3)'}}>No structure changes</p>
+                  </div>
+                ) : chartProposals.map(cp => {
+                  const typeLabels = {
+                    node_name:'Name change', node_role:'Role change', node_department:'Dept change',
+                    node_provider:'Provider change', manager_change:'Hierarchy change',
+                    board_seat:'Board seat', edge_label:'Edge label', edge_delete:'Edge removed'
+                  };
+                  const isPending = cp.status === 'pending';
+                  return (
+                    <div key={cp.id} className="rounded-xl p-3"
+                      style={{
+                        background: isPending?'rgba(245,158,11,0.05)':'rgba(255,255,255,0.02)',
+                        border: `1px solid ${isPending?'rgba(245,158,11,0.25)':'rgba(255,255,255,0.07)'}`,
+                        cursor: isPending?'pointer':'default'
+                      }}
+                      onClick={() => isPending && setVotingChartProp(cp)}
+                      data-testid={`chart-proposal-${cp.id}`}
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-medium" style={{color:'rgba(255,255,255,0.85)'}}>{typeLabels[cp.change_type]||cp.change_type}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                          cp.status==='pending'?'bg-amber-500/15 text-amber-300':
+                          cp.status==='approved'?'bg-emerald-500/15 text-emerald-300':'bg-red-500/15 text-red-300'
+                        }`}>{cp.status}</span>
+                      </div>
+                      <p className="text-xs" style={{color:'rgba(255,255,255,0.5)'}}>{cp.subject_name}</p>
+                      {(cp.before?.value||cp.after?.value) && (
+                        <div className="flex items-center gap-1.5 mt-1.5 text-[10px]">
+                          {cp.before?.value && <span className="line-through" style={{color:'rgba(239,68,68,0.7)'}}>{String(cp.before.value).slice(0,20)}</span>}
+                          {cp.before?.value && cp.after?.value && <ArrowRight size={9} style={{color:'rgba(255,255,255,0.3)'}}/>}
+                          {cp.after?.value && <span style={{color:'#10b981'}}>{String(cp.after.value).slice(0,20)}</span>}
+                        </div>
+                      )}
+                      <p className="text-[10px] mt-1" style={{color:'rgba(255,255,255,0.35)'}}>by {cp.proposed_by_name} · {(cp.votes||[]).length} votes</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          </TabsContent>
+        </Tabs>
       </div>
 
       {/* Right: Proposal detail */}
@@ -377,6 +473,56 @@ export default function BoardPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Chart Proposal Vote Dialog */}
+      {votingChartProp && (
+        <Dialog open={!!votingChartProp} onOpenChange={() => { setVotingChartProp(null); setChartVoteNote(''); }}>
+          <DialogContent style={{background:'hsl(var(--card))', border:'1px solid rgba(245,158,11,0.2)'}}>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2" style={{fontFamily:'Space Grotesk'}}>
+                <Network size={16} style={{color:'#f59e0b'}}/>Vote on Structure Change
+              </DialogTitle>
+            </DialogHeader>
+            <div className="py-3 space-y-3">
+              <div className="rounded-xl p-3" style={{background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.2)'}}>
+                <p className="text-xs font-semibold mb-1" style={{color:'#f59e0b'}}>{votingChartProp.change_type?.replace(/_/g,' ').toUpperCase()}</p>
+                <p className="text-sm font-medium">{votingChartProp.subject_name}</p>
+                {(votingChartProp.before?.value || votingChartProp.after?.value) && (
+                  <div className="flex items-center gap-2 mt-2 text-xs">
+                    {votingChartProp.before?.value && <span className="line-through" style={{color:'rgba(239,68,68,0.8)'}}>{String(votingChartProp.before.value).slice(0,40)}</span>}
+                    <ArrowRight size={11} style={{color:'rgba(255,255,255,0.3)'}}/>
+                    {votingChartProp.after?.value && <span style={{color:'#10b981'}}>{String(votingChartProp.after.value).slice(0,40)}</span>}
+                  </div>
+                )}
+                {votingChartProp.reason && <p className="text-xs mt-2 italic" style={{color:'rgba(255,255,255,0.5)'}}>Reason: {votingChartProp.reason}</p>}
+              </div>
+              <div className="text-xs" style={{color:'rgba(255,255,255,0.4)'}}>
+                Proposed by <span style={{color:'rgba(255,255,255,0.7)'}}>{votingChartProp.proposed_by_name}</span>
+                {' · '}{(votingChartProp.votes||[]).length} vote(s) cast
+              </div>
+              <div>
+                <Label className="text-xs mb-1.5 block" style={{color:'rgba(255,255,255,0.5)'}}>Vote Note (optional)</Label>
+                <Textarea value={chartVoteNote} onChange={e=>setChartVoteNote(e.target.value)}
+                  placeholder="Add context to your vote..." rows={2}
+                  style={{background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', resize:'none'}}/>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={()=>{setVotingChartProp(null);setChartVoteNote('');}}>Cancel</Button>
+              <Button onClick={() => voteChartProposal(votingChartProp.id, 'reject')}
+                data-testid="chart-vote-reject"
+                style={{background:'rgba(239,68,68,0.12)', color:'#ef4444', border:'1px solid rgba(239,68,68,0.3)'}}>
+                <XCircle size={13} className="mr-1.5"/>Reject
+              </Button>
+              <Button onClick={() => voteChartProposal(votingChartProp.id, 'approve')}
+                data-testid="chart-vote-approve"
+                style={{background:'rgba(16,185,129,0.15)', color:'#10b981', border:'1px solid rgba(16,185,129,0.3)'}}>
+                <CheckCircle2 size={13} className="mr-1.5"/>Approve
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

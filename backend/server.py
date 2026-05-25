@@ -441,13 +441,19 @@ async def get_chart(org_id: str, user=Depends(get_current_user)):
         else:
             ref = await db.agents.find_one({"id": n["node_ref_id"]}, {"_id": 0})
         n["ref_data"] = serialize_doc(ref) if ref else {}
+        # Enrich with provider badge
+        if n["node_type"] == "agent" and ref:
+            n["ref_data"]["provider_badge_computed"] = get_provider_badge(ref)
         # Mark guest delegates and primary delegate
         n["is_guest_delegate"] = n["node_type"] == "agent" and n["node_ref_id"] in delegate_map
         n["is_my_delegate"]    = n["node_ref_id"] == my_delegate_agent_id
         if n["is_guest_delegate"]:
             n["delegate_info"] = delegate_map.get(n["node_ref_id"], {})
         nodes.append(serialize_doc(n))
-    return nodes
+    # Fetch edge labels
+    edge_labels = await db.chart_edge_labels.find({"org_id": org_id}, {"_id": 0}).to_list(500)
+    edge_label_map = {f"{e['source']}-{e['target']}": e.get("label","") for e in edge_labels}
+    return {"nodes": nodes, "edge_labels": edge_label_map}
 
 @api_router.put("/orgs/{org_id}/chart/nodes/{node_id}")
 async def update_chart_node(org_id: str, node_id: str, data: dict, user=Depends(get_current_user)):
@@ -1815,6 +1821,347 @@ async def my_delegate(org_id: str, user=Depends(get_current_user)):
     agent = await db.agents.find_one({"id": member["brought_agent_id"]}, {"_id": 0})
     return serialize_doc(agent) if agent else None
 
+# ════════════════════════════════════════════════════════════════════════════
+# ⑳ ORG CHART GOVERNANCE (Phase 6)
+# ════════════════════════════════════════════════════════════════════════════
+
+PROVIDER_BADGES = ['OpenClaw', 'Hermes', 'Claude', 'OpenAI', 'Codex', 'Gemini', 'OpenRouter', 'Ollama', 'DeepSeek', 'Custom']
+PROVIDER_BADGE_COLORS = {
+    'Claude':     '#d97706', 'OpenAI':     '#74aa9c', 'Codex':      '#74aa9c',
+    'Gemini':     '#4285f4', 'OpenRouter':  '#8b5cf6', 'Ollama':     '#10b981',
+    'Hermes':     '#f97316', 'DeepSeek':    '#22d3ee', 'OpenClaw':   '#a78bfa',
+    'Custom':     '#6b7280',
+}
+
+def get_provider_badge(agent: dict) -> str:
+    if agent.get("provider_badge"): return agent["provider_badge"]
+    m  = (agent.get("model") or "").lower()
+    pb = (agent.get("provider_override") or "").lower()
+    if "claude" in m or "anthropic" in pb: return "Claude"
+    if "codex"  in m: return "Codex"
+    if "gpt"    in m or "openai"   in pb: return "OpenAI"
+    if "gemini" in m or "google"   in pb: return "Gemini"
+    if "deepseek" in m: return "DeepSeek"
+    if "ollama" in pb or "ollama" in m: return "Ollama"
+    if "openrouter" in pb: return "OpenRouter"
+    if "hermes" in m: return "Hermes"
+    return "Custom"
+
+class OrgChartFinalizeReq(BaseModel):
+    label: str = ""
+    reason: str = ""
+
+class OrgChartChangeProposalCreate(BaseModel):
+    change_type: str       # node_name | node_role | node_provider | node_department | manager_change | edge_label | edge_delete | board_seat
+    subject_id: str        # node_id or edge_id
+    subject_name: str
+    before: dict
+    after: dict
+    reason: str = ""
+    edge_source: str = ""  # for edge changes
+    edge_target: str = ""
+
+class ChartVoteReq(BaseModel):
+    value: str  # approve | reject
+    note: str = ""
+
+class EmergencyUnlockReq(BaseModel):
+    reason: str
+
+# ── Helpers ────────────────────────────────────────────────────────────────
+async def _get_chart_governance(org_id: str) -> dict:
+    cfg = await db.org_chart_configs.find_one({"org_id": org_id}, {"_id": 0})
+    return cfg or {"org_id": org_id, "is_governed": False, "emergency_override": False}
+
+async def _is_governed(org_id: str) -> bool:
+    cfg = await _get_chart_governance(org_id)
+    if cfg.get("emergency_override"): return False  # temporarily unlocked
+    return cfg.get("is_governed", False)
+
+async def _log_audit(org_id: str, change_type: str, subject_id: str, subject_name: str,
+                     before: dict, after: dict, proposed_by: str, proposed_by_name: str,
+                     vote_result: str, reason: str):
+    await db.org_chart_audit_log.insert_one({
+        "id": gen_id(), "org_id": org_id, "change_type": change_type,
+        "subject_id": subject_id, "subject_name": subject_name,
+        "before": before, "after": after,
+        "proposed_by": proposed_by, "proposed_by_name": proposed_by_name,
+        "vote_result": vote_result, "reason": reason,
+        "applied_at": now_iso() if vote_result in ("approved","emergency_applied") else None,
+        "created_at": now_iso(),
+    })
+
+# ── Governance endpoints ───────────────────────────────────────────────────
+@api_router.get("/orgs/{org_id}/chart/governance")
+async def get_chart_governance(org_id: str, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    cfg = await _get_chart_governance(org_id)
+    versions  = await db.org_chart_versions.count_documents({"org_id": org_id})
+    pending   = await db.org_chart_change_proposals.count_documents({"org_id": org_id, "status": "pending"})
+    cfg["version_count"]      = versions
+    cfg["pending_proposals"]  = pending
+    return serialize_doc(cfg)
+
+@api_router.post("/orgs/{org_id}/chart/finalize")
+async def finalize_chart(org_id: str, req: OrgChartFinalizeReq, user=Depends(get_current_user)):
+    await _assert_min_role(org_id, user["id"], "owner")
+    nodes = await db.chart_nodes.find({"org_id": org_id}, {"_id": 0}).to_list(300)
+    ver_count = await db.org_chart_versions.count_documents({"org_id": org_id})
+    snapshot = {
+        "id": gen_id(), "org_id": org_id, "version": ver_count + 1,
+        "snapshot": [serialize_doc(n) for n in nodes],
+        "label": req.label or f"v{ver_count + 1} — {now_iso()[:10]}",
+        "created_by": user["id"], "created_at": now_iso(),
+    }
+    await db.org_chart_versions.insert_one(snapshot)
+    await db.org_chart_configs.update_one(
+        {"org_id": org_id},
+        {"$set": {"is_governed": True, "emergency_override": False,
+                  "finalized_at": now_iso(), "finalized_by": user["id"]}},
+        upsert=True
+    )
+    await _log_audit(org_id, "governance.finalized", org_id, "Org Chart",
+                     {"is_governed": False}, {"is_governed": True},
+                     user["id"], user["name"], "emergency_applied", req.reason or "Initial finalization")
+    await event_bus.publish(OrgEvent(
+        event_type="chart.governance_changed", org_id=org_id, actor_id=user["id"],
+        payload={"is_governed": True, "version": ver_count + 1}
+    ))
+    await _create_notif(org_id, None, "chart_governed",
+        "Org chart finalized — Governed Mode active",
+        "All future changes require board approval.", "/org-chart")
+    return {"ok": True, "version": ver_count + 1, "is_governed": True}
+
+@api_router.post("/orgs/{org_id}/chart/emergency-unlock")
+async def emergency_unlock(org_id: str, req: EmergencyUnlockReq, user=Depends(get_current_user)):
+    await _assert_min_role(org_id, user["id"], "owner")
+    await db.org_chart_configs.update_one(
+        {"org_id": org_id},
+        {"$set": {"emergency_override": True, "emergency_override_by": user["id"],
+                  "emergency_override_at": now_iso(), "emergency_override_reason": req.reason}},
+        upsert=True
+    )
+    await _log_audit(org_id, "governance.emergency_unlock", org_id, "Org Chart",
+                     {"emergency_override": False}, {"emergency_override": True},
+                     user["id"], user["name"], "emergency_applied", req.reason)
+    await _create_notif(org_id, None, "chart_emergency_unlock",
+        f"⚠️ Emergency override activated by {user['name']}",
+        req.reason, "/org-chart")
+    return {"ok": True}
+
+@api_router.post("/orgs/{org_id}/chart/re-lock")
+async def re_lock_chart(org_id: str, user=Depends(get_current_user)):
+    await _assert_min_role(org_id, user["id"], "owner")
+    await db.org_chart_configs.update_one(
+        {"org_id": org_id},
+        {"$set": {"emergency_override": False}},
+        upsert=True
+    )
+    await _log_audit(org_id, "governance.re_locked", org_id, "Org Chart",
+                     {"emergency_override": True}, {"emergency_override": False},
+                     user["id"], user["name"], "emergency_applied", "Manual re-lock")
+    return {"ok": True}
+
+@api_router.get("/orgs/{org_id}/chart/versions")
+async def list_chart_versions(org_id: str, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    versions = await db.org_chart_versions.find({"org_id": org_id}, {"_id": 0, "snapshot": 0}).sort("version", -1).to_list(20)
+    return [serialize_doc(v) for v in versions]
+
+@api_router.get("/orgs/{org_id}/chart/versions/{version_id}/snapshot")
+async def get_chart_snapshot(org_id: str, version_id: str, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    snap = await db.org_chart_versions.find_one({"id": version_id, "org_id": org_id}, {"_id": 0})
+    if not snap: raise HTTPException(404)
+    return serialize_doc(snap)
+
+# ── Change Proposals ──────────────────────────────────────────────────────
+@api_router.get("/orgs/{org_id}/chart/change-proposals")
+async def list_chart_proposals(org_id: str, status_filter: str = None, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    query = {"org_id": org_id}
+    if status_filter: query["status"] = status_filter
+    proposals = await db.org_chart_change_proposals.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return [serialize_doc(p) for p in proposals]
+
+@api_router.post("/orgs/{org_id}/chart/change-proposals")
+async def create_chart_proposal(org_id: str, req: OrgChartChangeProposalCreate, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    proposal = {
+        "id": gen_id(), "org_id": org_id,
+        "change_type": req.change_type,
+        "subject_id": req.subject_id, "subject_name": req.subject_name,
+        "before": req.before, "after": req.after,
+        "reason": req.reason,
+        "edge_source": req.edge_source, "edge_target": req.edge_target,
+        "proposed_by": user["id"], "proposed_by_name": user["name"],
+        "status": "pending",
+        "votes": [],
+        "created_at": now_iso(), "applied_at": None,
+    }
+    await db.org_chart_change_proposals.insert_one(proposal)
+    result = serialize_doc(proposal)
+    await event_bus.publish(OrgEvent(
+        event_type="chart.proposal_created", org_id=org_id, actor_id=user["id"],
+        subject_id=proposal["id"], payload=result
+    ))
+    await _create_notif(org_id, None, "chart_proposal",
+        f"Org chart change proposed by {user['name']}",
+        f"{req.change_type}: {req.subject_name}", "/board")
+    return result
+
+@api_router.post("/orgs/{org_id}/chart/change-proposals/{proposal_id}/vote")
+async def vote_chart_proposal(org_id: str, proposal_id: str, req: ChartVoteReq, user=Depends(get_current_user)):
+    await _assert_min_role(org_id, user["id"], "board")
+    proposal = await db.org_chart_change_proposals.find_one({"id": proposal_id, "org_id": org_id})
+    if not proposal: raise HTTPException(404)
+    if proposal["status"] != "pending": raise HTTPException(400, "Proposal already resolved")
+    # Upsert vote
+    votes = [v for v in proposal.get("votes", []) if v.get("voter_id") != user["id"]]
+    votes.append({"voter_id": user["id"], "voter_name": user["name"], "value": req.value, "note": req.note, "voted_at": now_iso()})
+    await db.org_chart_change_proposals.update_one({"id": proposal_id}, {"$set": {"votes": votes}})
+    # Check majority
+    org_member_count = await db.org_members.count_documents({"org_id": org_id})
+    board_member_count = max(1, await db.org_members.count_documents({"org_id": org_id, "role": {"$in": ["owner","board"]}}))
+    approve_count = sum(1 for v in votes if v["value"] == "approve")
+    reject_count  = sum(1 for v in votes if v["value"] == "reject")
+    outcome = None
+    if approve_count > board_member_count // 2:
+        outcome = "approved"
+    elif reject_count >= board_member_count - board_member_count // 2:
+        outcome = "rejected"
+
+    if outcome:
+        await db.org_chart_change_proposals.update_one(
+            {"id": proposal_id},
+            {"$set": {"status": outcome, "applied_at": now_iso() if outcome == "approved" else None}}
+        )
+        if outcome == "approved":
+            await _apply_chart_proposal(proposal, org_id)
+        await _log_audit(org_id, proposal["change_type"], proposal["subject_id"], proposal["subject_name"],
+                         proposal["before"], proposal["after"],
+                         proposal["proposed_by"], proposal["proposed_by_name"],
+                         outcome, proposal["reason"])
+        await event_bus.publish(OrgEvent(
+            event_type=f"chart.proposal_{outcome}", org_id=org_id, actor_id=user["id"],
+            payload={"proposal_id": proposal_id, "change_type": proposal["change_type"]}
+        ))
+        notif_title = f"Chart change {'approved ✅' if outcome=='approved' else 'rejected ✗'}: {proposal['subject_name']}"
+        await _create_notif(org_id, proposal["proposed_by"], f"chart_proposal_{outcome}", notif_title, proposal["reason"], "/org-chart")
+
+    updated = await db.org_chart_change_proposals.find_one({"id": proposal_id}, {"_id": 0})
+    return serialize_doc(updated)
+
+async def _apply_chart_proposal(proposal: dict, org_id: str):
+    ct = proposal["change_type"]
+    sid = proposal["subject_id"]
+    after = proposal["after"]
+    if ct in ("node_name", "node_role", "node_department"):
+        key = {"node_name": "ref_name", "node_role": "ref_role", "node_department": "ref_department"}.get(ct, ct)
+        # Update the underlying agent or user record
+        agent = await db.agents.find_one({"id": proposal.get("ref_id", sid)})
+        if agent:
+            update_field = {"node_name": "name", "node_role": "role", "node_department": "department"}.get(ct, "name")
+            await db.agents.update_one({"id": agent["id"]}, {"$set": {update_field: after.get("value", "")}})
+    elif ct == "node_provider":
+        agent = await db.agents.find_one({"id": proposal.get("ref_id", sid)})
+        if agent:
+            await db.agents.update_one({"id": agent["id"]},
+                {"$set": {"provider_badge": after.get("provider_badge", "Custom"),
+                           "model": after.get("model", agent.get("model",""))}})
+    elif ct == "manager_change":
+        await db.chart_nodes.update_one({"id": sid, "org_id": org_id},
+                                         {"$set": {"manager_id": after.get("manager_id")}})
+    elif ct == "board_seat":
+        await db.chart_nodes.update_one({"id": sid, "org_id": org_id},
+                                         {"$set": {"is_board_member": after.get("is_board_member", False)}})
+    elif ct == "edge_label":
+        # Store edge labels in a separate collection keyed by source+target
+        await db.chart_edge_labels.update_one(
+            {"org_id": org_id, "source": proposal.get("edge_source"), "target": proposal.get("edge_target")},
+            {"$set": {"label": after.get("label", ""), "updated_at": now_iso()}},
+            upsert=True
+        )
+    elif ct == "edge_delete":
+        # Update manager_id to null for the target node
+        target = proposal.get("edge_target") or sid
+        await db.chart_nodes.update_one({"id": target, "org_id": org_id},
+                                         {"$set": {"manager_id": None}})
+    await event_bus.publish(OrgEvent(
+        event_type="chart.updated", org_id=org_id, actor_id="system",
+        payload={"node_id": sid, "change_type": ct}
+    ))
+
+# ── Audit Log ─────────────────────────────────────────────────────────────
+@api_router.get("/orgs/{org_id}/chart/audit-log")
+async def get_chart_audit_log(org_id: str, limit: int = 50, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    logs = await db.org_chart_audit_log.find({"org_id": org_id}, {"_id": 0}).sort("created_at", -1).limit(min(limit,200)).to_list(min(limit,200))
+    return [serialize_doc(l) for l in logs]
+
+# ── Edge Labels (draft mode) ──────────────────────────────────────────────
+@api_router.get("/orgs/{org_id}/chart/edge-labels")
+async def get_edge_labels(org_id: str, user=Depends(get_current_user)):
+    await _assert_member(org_id, user["id"])
+    labels = await db.chart_edge_labels.find({"org_id": org_id}, {"_id": 0}).to_list(500)
+    return [serialize_doc(l) for l in labels]
+
+@api_router.put("/orgs/{org_id}/chart/edge-labels")
+async def update_edge_label(org_id: str, data: dict, user=Depends(get_current_user)):
+    """Update or create an edge label in draft mode."""
+    await _assert_member(org_id, user["id"])
+    governed = await _is_governed(org_id)
+    if governed:
+        raise HTTPException(400, "Chart is governed. Use change proposals.")
+    source = data.get("source"); target = data.get("target"); label = data.get("label", "")
+    await db.chart_edge_labels.update_one(
+        {"org_id": org_id, "source": source, "target": target},
+        {"$set": {"label": label, "updated_at": now_iso()}},
+        upsert=True
+    )
+    await event_bus.publish(OrgEvent(
+        event_type="chart.updated", org_id=org_id, actor_id=user["id"],
+        payload={"source": source, "target": target, "label": label}
+    ))
+    return {"ok": True}
+
+# ── Enhanced chart node update (governance-aware) ─────────────────────────
+@api_router.put("/orgs/{org_id}/chart/nodes/{node_id}/inline")
+async def update_chart_node_inline(org_id: str, node_id: str, data: dict, user=Depends(get_current_user)):
+    """Draft-mode inline node update: name, role, department, provider_badge."""
+    await _assert_member(org_id, user["id"])
+    governed = await _is_governed(org_id)
+    if governed:
+        raise HTTPException(400, "Chart is governed. Use /chart/change-proposals.")
+    node = await db.chart_nodes.find_one({"id": node_id, "org_id": org_id})
+    if not node: raise HTTPException(404)
+    # Update the underlying agent or user
+    ref_id = node["node_ref_id"]
+    if node["node_type"] == "agent":
+        update = {}
+        if "name"           in data: update["name"]           = data["name"]
+        if "role"           in data: update["role"]           = data["role"]
+        if "department"     in data: update["department"]     = data["department"]
+        if "provider_badge" in data: update["provider_badge"] = data["provider_badge"]
+        if "model"          in data: update["model"]          = data["model"]
+        if update:
+            await db.agents.update_one({"id": ref_id}, {"$set": update})
+    if "manager_id" in data:
+        await db.chart_nodes.update_one({"id": node_id, "org_id": org_id}, {"$set": {"manager_id": data["manager_id"]}})
+    if "is_board_member" in data:
+        await db.chart_nodes.update_one({"id": node_id, "org_id": org_id}, {"$set": {"is_board_member": data["is_board_member"]}})
+    if "position" in data:
+        await db.chart_nodes.update_one({"id": node_id, "org_id": org_id}, {"$set": {"position": data["position"]}})
+    await event_bus.publish(OrgEvent(
+        event_type="chart.updated", org_id=org_id, actor_id=user["id"],
+        payload={"node_id": node_id}
+    ))
+    # Return updated node
+    agent = await db.agents.find_one({"id": ref_id}, {"_id": 0}) if node["node_type"] == "agent" else None
+    return {"ok": True, "provider_badge": get_provider_badge(agent) if agent else "Custom"}
+
+# ── Enrich chart endpoint with provider badge ─────────────────────────────
+
 # ── Seeds + Indexes ───────────────────────────────────────────────────────
 SKILLS_SEED = [
     {"id": "skill-coding",   "name": "Coding",        "description": "Write, review, and debug code", "category": "technical"},
@@ -1841,6 +2188,9 @@ async def startup():
         ("agent_thoughts", [([("agent_id",1),("created_at",-1)], {})]),
         ("org_installed_skills", [([("org_id",1),("skill_id",1)], {})]),
         ("delegate_swap_requests", [([("org_id",1),("status",1)], {})]),
+        ("org_chart_change_proposals", [([("org_id",1),("status",1)], {})]),
+        ("org_chart_audit_log",        [([("org_id",1),("created_at",-1)], {})]),
+        ("org_chart_configs",          [([("org_id",1)], {"unique": True})]),
     ]:
         for idx in idxs:
             try:

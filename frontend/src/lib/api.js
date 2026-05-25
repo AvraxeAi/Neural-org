@@ -166,3 +166,19 @@ export const myAgentsAPI = {
   mySwapRequest:     orgId => api.get(`/orgs/${orgId}/delegates/my-request`),
   myDelegate:        orgId => api.get(`/orgs/${orgId}/my-delegate`),
 };
+
+// ── Org Chart Governance ──────────────────────────────────────────────────
+export const chartGovAPI = {
+  getGovernance:     orgId => api.get(`/orgs/${orgId}/chart/governance`),
+  finalize:          (orgId,d) => api.post(`/orgs/${orgId}/chart/finalize`, d),
+  emergencyUnlock:   (orgId,d) => api.post(`/orgs/${orgId}/chart/emergency-unlock`, d),
+  reLock:            orgId => api.post(`/orgs/${orgId}/chart/re-lock`),
+  listVersions:      orgId => api.get(`/orgs/${orgId}/chart/versions`),
+  getSnapshot:       (orgId,vId) => api.get(`/orgs/${orgId}/chart/versions/${vId}/snapshot`),
+  listProposals:     (orgId,status) => api.get(`/orgs/${orgId}/chart/change-proposals`, {params:{status_filter:status}}),
+  createProposal:    (orgId,d) => api.post(`/orgs/${orgId}/chart/change-proposals`, d),
+  voteProposal:      (orgId,pId,d) => api.post(`/orgs/${orgId}/chart/change-proposals/${pId}/vote`, d),
+  getAuditLog:       orgId => api.get(`/orgs/${orgId}/chart/audit-log`),
+  updateEdgeLabel:   (orgId,d) => api.put(`/orgs/${orgId}/chart/edge-labels`, d),
+  updateNodeInline:  (orgId,nId,d) => api.put(`/orgs/${orgId}/chart/nodes/${nId}/inline`, d),
+};

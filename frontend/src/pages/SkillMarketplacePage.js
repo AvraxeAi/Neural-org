@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { Textarea } from '../components/ui/textarea';
+import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
@@ -244,6 +246,184 @@ function SkillDetail({ skill, installed, installing, onInstall, onUninstall, onC
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+const ALL_CAPABILITIES = ['analyze', 'summarize', 'search', 'code', 'plan', 'execute', 'classify', 'generate', 'translate', 'monitor'];
+const ALL_PERMISSIONS  = ['network', 'file_read', 'file_write', 'database', 'external_api', 'messaging'];
+
+function SkillStudio({ orgId, onCreated }) {
+  const [customSkills, setCustomSkills] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ name:'', description:'', version:'1.0.0', category:'custom', endpoint:'', capabilities:[], permissions:[] });
+
+  const fetchCustom = useCallback(async () => {
+    if (!orgId) return;
+    try {
+      const res = await api.get(`/orgs/${orgId}/skills/custom`);
+      setCustomSkills(res.data);
+    } catch {}
+  }, [orgId]);
+
+  useEffect(() => { fetchCustom(); }, [fetchCustom]);
+
+  const toggleArr = (field, val) => setForm(p => ({
+    ...p, [field]: p[field].includes(val) ? p[field].filter(x => x !== val) : [...p[field], val]
+  }));
+
+  const handleCreate = async () => {
+    if (!form.name.trim() || !form.description.trim()) { toast.error('Name and description are required'); return; }
+    setSaving(true);
+    try {
+      await api.post(`/orgs/${orgId}/skills/custom`, form);
+      toast.success(`"${form.name}" created and installed!`);
+      setForm({ name:'', description:'', version:'1.0.0', category:'custom', endpoint:'', capabilities:[], permissions:[] });
+      setShowForm(false);
+      fetchCustom();
+      onCreated();
+    } catch (e) { toast.error(e.response?.data?.detail || 'Failed to create skill'); }
+    finally { setSaving(false); }
+  };
+
+  const manifest = JSON.stringify({
+    name: form.name || 'My Custom Skill',
+    version: form.version,
+    description: form.description || '...',
+    capabilities: form.capabilities,
+    permissions: form.permissions,
+    endpoint: form.endpoint || undefined,
+    author: 'you@company.com'
+  }, null, 2);
+
+  return (
+    <ScrollArea className="h-full p-6">
+      <div className="max-w-2xl space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{ background:'rgba(167,139,250,0.15)', border:'1px solid rgba(167,139,250,0.25)' }}>
+              <Code size={16} style={{ color:'#a78bfa' }} />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold" style={{ fontFamily:'Space Grotesk' }}>Skill Studio</h2>
+              <p className="text-xs" style={{ color:'rgba(255,255,255,0.4)' }}>Build custom skills for your org</p>
+            </div>
+          </div>
+          <Button size="sm" onClick={() => setShowForm(s => !s)}
+            style={{ background:'rgba(167,139,250,0.15)', color:'#a78bfa', border:'1px solid rgba(167,139,250,0.25)' }}>
+            <Plus size={13} className="mr-1.5" />{showForm ? 'Cancel' : 'New Skill'}
+          </Button>
+        </div>
+
+        {/* Create form */}
+        {showForm && (
+          <motion.div initial={{ opacity:0, y:-8 }} animate={{ opacity:1, y:0 }}
+            className="rounded-2xl p-5 space-y-4"
+            style={{ background:'rgba(167,139,250,0.06)', border:'1px solid rgba(167,139,250,0.2)' }}>
+            <h3 className="text-sm font-semibold" style={{ fontFamily:'Space Grotesk', color:'#a78bfa' }}>Create Custom Skill</h3>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs mb-1.5 block" style={{ color:'rgba(255,255,255,0.5)' }}>Name *</Label>
+                <Input value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))}
+                  placeholder="My Skill" style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)' }}/>
+              </div>
+              <div>
+                <Label className="text-xs mb-1.5 block" style={{ color:'rgba(255,255,255,0.5)' }}>Version</Label>
+                <Input value={form.version} onChange={e=>setForm(p=>({...p,version:e.target.value}))}
+                  placeholder="1.0.0" style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)' }}/>
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-xs mb-1.5 block" style={{ color:'rgba(255,255,255,0.5)' }}>Description *</Label>
+              <Textarea value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))}
+                placeholder="What does this skill do?" rows={2}
+                style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', resize:'none' }}/>
+            </div>
+
+            <div>
+              <Label className="text-xs mb-1.5 block" style={{ color:'rgba(255,255,255,0.5)' }}>Endpoint URL (optional)</Label>
+              <Input value={form.endpoint} onChange={e=>setForm(p=>({...p,endpoint:e.target.value}))}
+                placeholder="https://api.example.com/skill"
+                style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', fontFamily:'IBM Plex Mono', fontSize:12 }}/>
+            </div>
+
+            <div>
+              <Label className="text-xs mb-2 block" style={{ color:'rgba(255,255,255,0.5)' }}>Capabilities</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {ALL_CAPABILITIES.map(cap => (
+                  <button key={cap} onClick={() => toggleArr('capabilities', cap)}
+                    className="text-xs px-2 py-1 rounded-lg"
+                    style={{
+                      background: form.capabilities.includes(cap) ? 'rgba(167,139,250,0.2)' : 'rgba(255,255,255,0.04)',
+                      border: `1px solid ${form.capabilities.includes(cap) ? 'rgba(167,139,250,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                      color: form.capabilities.includes(cap) ? '#a78bfa' : 'rgba(255,255,255,0.5)',
+                    }}>{cap}</button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-xs mb-2 block" style={{ color:'rgba(255,255,255,0.5)' }}>Permissions Required</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {ALL_PERMISSIONS.map(perm => (
+                  <button key={perm} onClick={() => toggleArr('permissions', perm)}
+                    className="text-xs px-2 py-1 rounded-lg flex items-center gap-1"
+                    style={{
+                      background: form.permissions.includes(perm) ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.04)',
+                      border: `1px solid ${form.permissions.includes(perm) ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                      color: form.permissions.includes(perm) ? '#f59e0b' : 'rgba(255,255,255,0.5)',
+                    }}>
+                    <Lock size={9}/>{perm.replace(/_/g,' ')}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <Button onClick={handleCreate} disabled={saving || !form.name.trim() || !form.description.trim()}
+              className="w-full"
+              style={{ background:'rgba(167,139,250,0.2)', color:'#a78bfa', border:'1px solid rgba(167,139,250,0.35)' }}>
+              {saving ? 'Creating...' : '✦ Create & Install Skill'}
+            </Button>
+          </motion.div>
+        )}
+
+        {/* Manifest preview */}
+        <div className="rounded-2xl p-5" style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)' }}>
+          <p className="text-xs font-semibold mb-3" style={{ color:'rgba(255,255,255,0.4)' }}>MANIFEST PREVIEW</p>
+          <pre className="text-xs leading-relaxed overflow-x-auto" style={{ color:'#22d3ee', fontFamily:'IBM Plex Mono' }}>
+            {manifest}
+          </pre>
+        </div>
+
+        {/* Existing custom skills */}
+        {customSkills.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold mb-3" style={{ color:'rgba(255,255,255,0.4)' }}>YOUR CUSTOM SKILLS ({customSkills.length})</p>
+            <div className="space-y-2">
+              {customSkills.map(s => (
+                <div key={s.id} className="flex items-center gap-3 p-3 rounded-xl"
+                  style={{ background:'rgba(167,139,250,0.06)', border:'1px solid rgba(167,139,250,0.15)' }}>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ background:'rgba(167,139,250,0.15)' }}>
+                    <Code size={13} style={{ color:'#a78bfa' }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold truncate" style={{ fontFamily:'Space Grotesk' }}>{s.name}</p>
+                    <p className="text-xs truncate" style={{ color:'rgba(255,255,255,0.4)' }}>{s.description}</p>
+                  </div>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-mono flex-shrink-0"
+                    style={{ background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.4)' }}>v{s.version}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </ScrollArea>
   );
 }
 
@@ -481,60 +661,7 @@ export default function SkillMarketplacePage() {
           )}
 
           {tab === 'studio' && (
-            <ScrollArea className="h-full p-6">
-              <div className="max-w-2xl">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-                    style={{ background: 'rgba(167,139,250,0.15)', border: '1px solid rgba(167,139,250,0.25)' }}>
-                    <Code size={16} style={{ color: '#a78bfa' }} />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold" style={{ fontFamily: 'Space Grotesk' }}>Skill Studio</h2>
-                    <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>Build, publish, and monetize custom skills</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-                  {[
-                    { icon: Plus, title: 'New Skill', desc: 'Start from scratch', color: '#22d3ee', action: 'Create' },
-                    { icon: Package, title: 'From Template', desc: 'Fork an existing skill', color: '#a78bfa', action: 'Browse' },
-                    { icon: ExternalLink, title: 'Import from GitHub', desc: 'Link a repository', color: '#10b981', action: 'Connect' },
-                  ].map(({ icon: Icon, title, desc, color, action }) => (
-                    <button key={title}
-                      className="rounded-2xl p-4 text-left"
-                      style={{ background: 'var(--surface-1)', border: `1px solid ${color}25` }}
-                      onClick={() => toast.info(`${title} \u2014 coming soon!`)}
-                    >
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-2"
-                        style={{ background: color + '15' }}>
-                        <Icon size={14} style={{ color }} />
-                      </div>
-                      <p className="text-sm font-semibold" style={{ fontFamily: 'Space Grotesk' }}>{title}</p>
-                      <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>{desc}</p>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="rounded-2xl p-5" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                  <p className="text-xs font-semibold mb-3" style={{ color: 'rgba(255,255,255,0.4)' }}>SKILL MANIFEST PREVIEW</p>
-                  <pre className="text-xs font-mono leading-relaxed" style={{ color: '#22d3ee', overflowX: 'auto' }}>
-{`{
-  "name": "My Custom Skill",
-  "version": "1.0.0",
-  "description": "...",
-  "capabilities": ["analyze", "summarize"],
-  "permissions": ["network"],
-  "entry": "skill.py",
-  "author": "you@company.com"
-}`}
-                  </pre>
-                  <Button size="sm" className="mt-3" onClick={() => toast.info('Publishing coming soon!')}
-                    style={{ background: 'rgba(167,139,250,0.15)', color: '#a78bfa', border: '1px solid rgba(167,139,250,0.25)' }}>
-                    Publish to ClaWHub
-                  </Button>
-                </div>
-              </div>
-            </ScrollArea>
+            <SkillStudio orgId={currentOrg?.id} onCreated={fetchData} />
           )}
         </div>
       </div>

@@ -18,6 +18,7 @@ import { Button } from '../components/ui/button';
 import { AnimatePresence as AP } from 'framer-motion';
 import OrgChartNode from '../components/OrgChart/OrgChartNode';
 import NodeEditPanel from '../components/OrgChart/NodeEditPanel';
+import NodeInspector from '../components/OrgChart/NodeInspector';
 import GovernanceBar from '../components/OrgChart/GovernanceBar';
 import CustomEdge from '../components/OrgChart/CustomEdge';
 import AuditLogPanel from '../components/OrgChart/AuditLogPanel';
@@ -136,6 +137,7 @@ export default function OrgChartPage() {
   const [edgeLabelMap, setEdgeLabelMap] = useState({});
   const [layout, setLayout] = useState('tree');
   const [selectedNode, setSelectedNode] = useState(null);
+  const [editingNode, setEditingNode] = useState(null); // full edit panel
   const [governance, setGovernance] = useState(null);
   const [auditLog, setAuditLog] = useState([]);
   const [auditOpen, setAuditOpen] = useState(false);
@@ -298,14 +300,28 @@ export default function OrgChartPage() {
   const onNodeClick = useCallback((_, node) => {
     const raw = rawNodes.find(r => r.id === node.id);
     setSelectedNode(raw || null);
+    setEditingNode(null);
   }, [rawNodes]);
 
-  // Set edge label (draft mode)
+  // Set edge label — draft mode: apply instantly; governed mode: propose
   const applyEdgeLabel = async (label) => {
     const { edgeId, sourceId, targetId } = edgeLabelPicker;
     setEdges(prev => prev.map(e => e.id === edgeId ? {...e, data: {...e.data, label}} : e));
     setEdgeLabelPicker(null);
-    if (!isGoverned) {
+    if (isGoverned) {
+      const srcNode = rawNodes.find(n => n.id === sourceId);
+      const tgtNode = rawNodes.find(n => n.id === targetId);
+      await proposeChange({
+        change_type: 'edge_label',
+        subject_id: `${sourceId}__${targetId}`,
+        subject_name: `${srcNode?.ref_data?.name || sourceId} → ${tgtNode?.ref_data?.name || targetId}`,
+        before: { label: edgeLabelMap[`${sourceId}-${targetId}`] || '' },
+        after:  { label },
+        reason: '',
+        edge_source: sourceId,
+        edge_target: targetId,
+      });
+    } else {
       await api.put(`/orgs/${currentOrg.id}/chart/edge-labels`, { source: sourceId, target: targetId, label }).catch(() => {});
     }
   };
@@ -478,15 +494,33 @@ export default function OrgChartPage() {
           </AnimatePresence>
         </div>
 
-        {/* Node edit panel */}
+        {/* Node inspector (read-only) — opens on single click */}
         <AnimatePresence>
-          {selectedNode && (
-            <NodeEditPanel
+          {selectedNode && !editingNode && (
+            <NodeInspector
               chartNode={selectedNode}
+              orgId={currentOrg?.id}
+              onClose={() => setSelectedNode(null)}
+              onMessage={(node) => {
+                // Navigate to messages, prefilled with this node's name
+                window.location.href = '/messages';
+              }}
+              onEdit={() => { setEditingNode(selectedNode); }}
+              onRefresh={fetchChart}
+              isGoverned={isGoverned}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* Node edit panel — opened from inspector */}
+        <AnimatePresence>
+          {editingNode && (
+            <NodeEditPanel
+              chartNode={editingNode}
               isGoverned={isGoverned}
               onSave={handleSaveNode}
               onPropose={proposeChange}
-              onClose={() => setSelectedNode(null)}
+              onClose={() => { setEditingNode(null); }}
               orgId={currentOrg?.id}
             />
           )}

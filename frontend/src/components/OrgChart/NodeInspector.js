@@ -1,20 +1,23 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { X, MessageSquare, Bot, User, Crown, Shield, Zap, Code, Search, BarChart2, Target, FileText } from 'lucide-react';
+import { X, MessageSquare, Bot, Pencil, Code, Search, BarChart2, Target, FileText, Zap } from 'lucide-react';
 import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
 import { Switch } from '../ui/switch';
 import { chartAPI } from '../../lib/api';
 import { toast } from 'sonner';
 
 const skillIcons = { coding: Code, research: Search, analysis: BarChart2, api: Zap, writing: FileText, decision: Target };
 
-export default function NodeInspector({ chartNode, orgId, onClose, onMessage, onRefresh }) {
+export default function NodeInspector({ chartNode, orgId, onClose, onMessage, onEdit, onRefresh, isGoverned }) {
   const [isBoardMember, setIsBoardMember] = useState(chartNode.is_board_member);
   const [saving, setSaving] = useState(false);
   const ref = chartNode.ref_data || {};
 
   const toggleBoardMember = async (val) => {
+    if (isGoverned) {
+      toast.warning('Chart is governed — use Edit to propose board seat change');
+      return;
+    }
     setIsBoardMember(val);
     setSaving(true);
     try {
@@ -115,14 +118,28 @@ export default function NodeInspector({ chartNode, orgId, onClose, onMessage, on
       </div>
 
       {/* Footer actions */}
-      <div className="p-4" style={{borderTop:'1px solid rgba(255,255,255,0.06)'}}>
+      <div className="p-4 space-y-2" style={{borderTop:'1px solid rgba(255,255,255,0.06)'}}>
+        {onEdit && (
+          <Button
+            className="w-full"
+            onClick={onEdit}
+            data-testid="node-edit-button"
+            style={{background: isGoverned ? 'rgba(245,158,11,0.12)' : 'rgba(34,211,238,0.12)',
+                   color: isGoverned ? '#f59e0b' : '#22d3ee',
+                   border: `1px solid ${isGoverned ? 'rgba(245,158,11,0.25)' : 'rgba(34,211,238,0.25)'}`}}
+          >
+            <Pencil size={13} className="mr-2" />
+            {isGoverned ? 'Propose Change' : 'Edit Node'}
+          </Button>
+        )}
         <Button
+          variant="ghost"
           className="w-full"
           onClick={() => onMessage(chartNode)}
           data-testid="node-message-button"
-          style={{background:'hsl(var(--primary))', color:'hsl(var(--primary-foreground))'}}
+          style={{color:'rgba(255,255,255,0.5)', border:'1px solid rgba(255,255,255,0.07)'}}
         >
-          <MessageSquare size={14} className="mr-2" />Message
+          <MessageSquare size={13} className="mr-2" />Message
         </Button>
       </div>
     </motion.div>

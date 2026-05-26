@@ -1324,11 +1324,12 @@ async def get_marketplace_skill(skill_id: str):
 async def list_installed_skills(org_id: str, user=Depends(get_current_user)):
     await _assert_member(org_id, user["id"])
     installs = await db.org_installed_skills.find({"org_id": org_id}, {"_id": 0}).to_list(200)
-    # enrich with catalog data
+    custom_skills = {s["id"]: s async for s in db.custom_skills.find({"org_id": org_id}, {"_id": 0})}
     result = []
     for inst in installs:
-        catalog = next((s for s in SKILLS_CATALOG if s["id"] == inst["skill_id"]), {})
-        result.append({**catalog, **serialize_doc(inst)})
+        sid = inst["skill_id"]
+        catalog = custom_skills.get(sid) or next((s for s in SKILLS_CATALOG if s["id"] == sid), {})
+        result.append(serialize_doc({**catalog, **inst}))
     return result
 
 @api_router.post("/orgs/{org_id}/skills/install")
@@ -1366,6 +1367,53 @@ async def uninstall_skill(org_id: str, skill_id: str, user=Depends(get_current_u
         payload={"skill_id": skill_id}
     ))
     return {"ok": True}
+
+class CustomSkillCreate(BaseModel):
+    name: str
+    description: str
+    category: str = "custom"
+    capabilities: List[str] = []
+    permissions: List[str] = []
+    endpoint: str = ""
+    version: str = "1.0.0"
+
+@api_router.post("/orgs/{org_id}/skills/custom")
+async def create_custom_skill(org_id: str, req: CustomSkillCreate, user=Depends(get_current_user)):
+    """Create a custom skill scoped to this org and auto-install it."""
+    await _assert_min_role(org_id, user["id"], "member")
+    skill_id = f"custom-{gen_id()}"
+    skill = {
+        "id": skill_id, "org_id": org_id,
+        "name": req.name, "description": req.description,
+        "category": req.category, "capabilities": req.capabilities,
+        "permissions": req.permissions, "endpoint": req.endpoint,
+        "version": req.version, "author": user["name"],
+        "author_id": user["id"], "source": "custom",
+        "rating": 0.0, "downloads": 0, "reviews": 0,
+        "featured": False, "author_verified": False, "tags": [],
+        "color": "#a78bfa", "price": "free",
+        "created_at": now_iso(), "updated_at": now_iso(),
+    }
+    await db.custom_skills.insert_one(skill)
+    install = {
+        "id": gen_id(), "org_id": org_id, "skill_id": skill_id,
+        "installed_version": req.version, "enabled": True,
+        "installed_by": user["id"], "installed_at": now_iso(),
+        "source_override": "", "is_custom": True,
+    }
+    await db.org_installed_skills.insert_one(install)
+    await event_bus.publish(OrgEvent(
+        event_type="skill.installed", org_id=org_id, actor_id=user["id"],
+        payload={"skill_id": skill_id, "name": req.name, "custom": True}
+    ))
+    return serialize_doc({**skill, "install_id": install["id"]})
+
+@api_router.get("/orgs/{org_id}/skills/custom")
+async def list_custom_skills(org_id: str, user=Depends(get_current_user)):
+    """List custom skills created by this org."""
+    await _assert_member(org_id, user["id"])
+    skills = await db.custom_skills.find({"org_id": org_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return [serialize_doc(s) for s in skills]
 
 @api_router.put("/orgs/{org_id}/skills/{skill_id}/toggle")
 async def toggle_skill(org_id: str, skill_id: str, user=Depends(get_current_user)):

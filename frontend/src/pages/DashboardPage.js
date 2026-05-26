@@ -3,12 +3,12 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useOrg } from '../contexts/OrgContext';
 import { useWS } from '../contexts/WSContext';
-import { dashAPI, workflowAPI, boardAPI } from '../lib/api';
+import { dashAPI, workflowAPI, boardAPI, healthAPI } from '../lib/api';
 import { AreaChart, Area, ResponsiveContainer, Tooltip as RechartTooltip } from 'recharts';
 import {
   Activity, Users, Bot, Gavel, GitBranch, MessageSquare,
   Plus, Play, ArrowRight, Zap, TrendingUp, ArrowUpRight,
-  Swords, Network
+  Swords, Network, Brain, Database
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -128,33 +128,45 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const { currentOrg } = useOrg();
   const { on } = useWS();
-  const [stats, setStats] = useState({ members: 0, agents: 0, open_proposals: 0, workflows: 0, active_runs: 0, total_messages: 0 });
+  const [stats, setStats] = useState({ members: 0, agents: 0, open_proposals: 0, workflows: 0, active_runs: 0, total_messages: 0, deliberations: 0, memory_nodes: 0 });
   const [activity, setActivity] = useState([]);
   const [workflows, setWorkflows] = useState([]);
   const [proposals, setProposals] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [chartData] = useState(() =>
-    Array.from({ length: 14 }, (_, i) => ({
-      name: i,
-      value: Math.floor(Math.random() * 60 + 15),
-      value2: Math.floor(Math.random() * 40 + 5)
-    }))
-  );
+  const [chartData, setChartData] = useState([]);
 
   const fetchData = useCallback(async () => {
     if (!currentOrg) return;
     setLoading(true);
     try {
-      const [statsRes, actRes, wfRes, propRes] = await Promise.all([
+      const [statsRes, actRes, wfRes, propRes, eventsRes] = await Promise.all([
         dashAPI.stats(currentOrg.id),
         dashAPI.activity(currentOrg.id),
         workflowAPI.list(currentOrg.id),
         boardAPI.listProposals(currentOrg.id),
+        healthAPI.events(currentOrg.id, 200),
       ]);
       setStats(statsRes.data);
       setActivity(actRes.data);
       setWorkflows(wfRes.data.slice(0, 5));
       setProposals(propRes.data.filter(p => p.status === 'open').slice(0, 4));
+
+      // Build 14-day event frequency chart from real events
+      const events = eventsRes.data || [];
+      const days = Array.from({ length: 14 }, (_, i) => {
+        const d = new Date(); d.setDate(d.getDate() - (13 - i));
+        return d.toISOString().slice(0, 10);
+      });
+      const dayCount = {};
+      const day2Count = {};
+      events.forEach(ev => {
+        const day = (ev.created_at || '').slice(0, 10);
+        if (!day) return;
+        dayCount[day] = (dayCount[day] || 0) + 1;
+        if (['message_created','proposal_created','vote_cast'].includes(ev.event_type))
+          day2Count[day] = (day2Count[day] || 0) + 1;
+      });
+      setChartData(days.map((d, i) => ({ name: i, value: dayCount[d] || 0, value2: day2Count[d] || 0 })));
     } catch { } finally { setLoading(false); }
   }, [currentOrg]);
 
@@ -191,6 +203,8 @@ export default function DashboardPage() {
     { icon: GitBranch, label: 'Workflows', value: stats.workflows, color: '#10b981', path: '/workflows', delay: 0.15 },
     { icon: Activity, label: 'Active Runs', value: stats.active_runs, color: '#f97316', path: '/workflows', delay: 0.2 },
     { icon: MessageSquare, label: 'Messages', value: stats.total_messages, color: '#ec4899', path: '/messages', delay: 0.25 },
+    { icon: Brain, label: 'Deliberations', value: stats.deliberations, color: '#22d3ee', path: '/deliberation', delay: 0.3 },
+    { icon: Database, label: 'Memory Nodes', value: stats.memory_nodes, color: '#6366f1', path: '/memory', delay: 0.35 },
   ];
 
   return (

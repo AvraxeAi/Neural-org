@@ -124,6 +124,8 @@ export const marketplaceAPI = {
   install:        (oid,sid) => api.post(`/orgs/${oid}/skills/install`, {skill_id:sid}),
   uninstall:      (oid,sid) => api.delete(`/orgs/${oid}/skills/${sid}`),
   toggle:         (oid,sid) => api.put(`/orgs/${oid}/skills/${sid}/toggle`),
+  listCustom:     orgId   => api.get(`/orgs/${orgId}/skills/custom`),
+  createCustom:   (oid,d) => api.post(`/orgs/${oid}/skills/custom`, d),
 };
 
 // ── Agent Autonomy ────────────────────────────────────────────────────────

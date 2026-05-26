@@ -18,6 +18,7 @@ import WarRoomPage from './pages/WarRoomPage';
 import SkillMarketplacePage from './pages/SkillMarketplacePage';
 import MyAgentsPage from './pages/MyAgentsPage';
 import AppLayout from './components/Layout/AppLayout';
+import ErrorBoundary from './components/ErrorBoundary';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -32,7 +33,9 @@ function ProtectedRoute({ children }) {
   if (!user) return <Navigate to="/login" replace />;
   return (
     <OrgProvider>
-      <AppLayout>{children}</AppLayout>
+      <ErrorBoundary title="Page error">
+        <AppLayout>{children}</AppLayout>
+      </ErrorBoundary>
     </OrgProvider>
   );
 }

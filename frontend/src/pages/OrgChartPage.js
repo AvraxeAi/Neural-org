@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ReactFlow, ReactFlowProvider, Background, Controls, MiniMap, Panel,
   useNodesState, useEdgesState, addEdge, ConnectionLineType, MarkerType
@@ -129,6 +130,7 @@ function buildFlow(chartNodes, positions, layout, edgeLabelMap) {
 }
 
 export default function OrgChartPage() {
+  const navigate = useNavigate();
   const { currentOrg } = useOrg();
   const { on } = useWS();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -501,10 +503,7 @@ export default function OrgChartPage() {
               chartNode={selectedNode}
               orgId={currentOrg?.id}
               onClose={() => setSelectedNode(null)}
-              onMessage={(node) => {
-                // Navigate to messages, prefilled with this node's name
-                window.location.href = '/messages';
-              }}
+              onMessage={() => navigate('/messages')}
               onEdit={() => { setEditingNode(selectedNode); }}
               onRefresh={fetchChart}
               isGoverned={isGoverned}

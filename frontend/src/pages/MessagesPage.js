@@ -94,7 +94,9 @@ export default function MessagesPage() {
   const [members, setMembers] = useState([]);
   const [selectedParticipants, setSelectedParticipants] = useState([]);
   const [threadTitle, setThreadTitle] = useState('');
+  const [typingUsers, setTypingUsers] = useState([]);
   const messagesEndRef = useRef(null);
+  const typingTimerRef = useRef(null);
 
   const fetchThreads = useCallback(async () => {
     if (!currentOrg) return;
@@ -126,6 +128,31 @@ export default function MessagesPage() {
     });
     return () => unsub();
   }, [on, selectedThread?.id, fetchThreads]);
+
+  useEffect(() => {
+    if (!on) return;
+    const me = JSON.parse(localStorage.getItem('openclaw_user') || '{}');
+    const unsub = on('presence.updated', (data) => {
+      if (!selectedThread) return;
+      setTypingUsers(prev => {
+        const isTypingHere = data.typing_in === selectedThread.id && data.user_id !== me.id;
+        const filtered = prev.filter(u => u.user_id !== data.user_id);
+        return isTypingHere ? [...filtered, { user_id: data.user_id, name: data.name }] : filtered;
+      });
+    });
+    return () => unsub();
+  }, [on, selectedThread?.id]);
+
+  // Clear typing users when thread changes
+  useEffect(() => { setTypingUsers([]); }, [selectedThread?.id]);
+
+  const handleTextChange = (e) => {
+    setText(e.target.value);
+    if (!selectedThread) return;
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    msgAPI.typing(selectedThread.id).catch(() => {});
+    typingTimerRef.current = setTimeout(() => {}, 2000);
+  };
 
   const handleSend = async () => {
     if (!text.trim() || !selectedThread) return;
@@ -236,6 +263,20 @@ export default function MessagesPage() {
                 </div>
               )}
               {messages.map(msg => <ChatBubble key={msg.id} msg={msg} />)}
+              {typingUsers.length > 0 && (
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <div className="flex gap-0.5">
+                    {[0,1,2].map(i => (
+                      <motion.div key={i} className="w-1.5 h-1.5 rounded-full"
+                        style={{background:'rgba(34,211,238,0.7)'}}
+                        animate={{y:[0,-4,0]}} transition={{duration:0.8, delay:i*0.15, repeat:Infinity}} />
+                    ))}
+                  </div>
+                  <span className="text-[11px]" style={{color:'rgba(255,255,255,0.35)'}}>
+                    {typingUsers.map(u => u.name).join(', ')} {typingUsers.length === 1 ? 'is' : 'are'} typing…
+                  </span>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </ScrollArea>
 
@@ -245,7 +286,7 @@ export default function MessagesPage() {
                 <Textarea
                   data-testid="message-input"
                   value={text}
-                  onChange={e => setText(e.target.value)}
+                  onChange={handleTextChange}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                   placeholder="Send a message..."
                   rows={1}

@@ -1,6 +1,8 @@
-from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, status, Query
+from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, status, Query, Request
 from fastapi.security import OAuth2PasswordBearer
+from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from passlib.context import CryptContext
 from jose import jwt, JWTError
@@ -9,7 +11,8 @@ from typing import Optional, List, Any
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
-import os, uuid, asyncio, json, logging, random, string, time
+from collections import defaultdict
+import os, uuid, asyncio, json, logging, random, string, time, httpx
 
 # local modules
 from events_bus import EventBus, OrgEvent
@@ -21,9 +24,29 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
 # ── Config ────────────────────────────────────────────────────────────────
-SECRET_KEY   = os.environ.get("JWT_SECRET", "openclaw-super-secret-key-2024")
+_jwt_secret = os.environ.get("JWT_SECRET", "")
+if not _jwt_secret:
+    if os.environ.get("OPENCLAW_DEV"):
+        logger_boot = logging.getLogger("openclaw.boot")
+        logger_boot.warning("JWT_SECRET not set — using insecure default (dev only)")
+        _jwt_secret = "openclaw-dev-insecure-secret"
+    else:
+        raise RuntimeError("JWT_SECRET environment variable must be set in production. "
+                           "Set OPENCLAW_DEV=1 to allow insecure default in development.")
+SECRET_KEY   = _jwt_secret
 ALGORITHM    = "HS256"
 TOKEN_EXPIRE = 24  # hours
+
+# ── Rate limiting (in-memory, per-IP) ────────────────────────────────────
+_rate_store: dict = defaultdict(list)
+
+def _check_rate_limit(key: str, max_calls: int = 10, window: int = 60):
+    now = time.time()
+    calls = [t for t in _rate_store[key] if now - t < window]
+    _rate_store[key] = calls
+    if len(calls) >= max_calls:
+        raise HTTPException(429, "Too many requests. Try again later.")
+    _rate_store[key].append(now)
 
 # ── DB ────────────────────────────────────────────────────────────────────
 mongo_url = os.environ["MONGO_URL"]
@@ -35,13 +58,43 @@ db        = client[DB_NAME]
 app        = FastAPI(title="OpenClaw Command Center v2")
 api_router = APIRouter(prefix="/api")
 
+_cors_origins = os.environ.get("CORS_ORIGINS", "*").split(",")
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+MAX_BODY_BYTES = 2 * 1024 * 1024  # 2 MB
+
+class BodySizeLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > MAX_BODY_BYTES:
+            return JSONResponse({"detail": "Request body too large"}, status_code=413)
+        return await call_next(request)
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "connect-src 'self' wss: https:; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data: https:;"
+        )
+        return response
+
+app.add_middleware(BodySizeLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("openclaw")
@@ -277,7 +330,8 @@ class MemoryEdgeCreate(BaseModel):
 # ① AUTH
 # ════════════════════════════════════════════════════════════════════════════
 @api_router.post("/auth/register")
-async def register(req: RegisterReq):
+async def register(req: RegisterReq, request: Request):
+    _check_rate_limit(f"register:{request.client.host}", max_calls=5, window=300)
     if await db.users.find_one({"email": req.email.lower()}):
         raise HTTPException(400, "Email already registered")
     user = {
@@ -291,7 +345,8 @@ async def register(req: RegisterReq):
     return {"token": token, "user": {k: v for k, v in user.items() if k not in ("password_hash","_id")}}
 
 @api_router.post("/auth/login")
-async def login(req: LoginReq):
+async def login(req: LoginReq, request: Request):
+    _check_rate_limit(f"login:{request.client.host}", max_calls=10, window=300)
     user = await db.users.find_one({"email": req.email.lower()}, {"_id": 0})
     if not user or not verify_password(req.password, user.get("password_hash", "")):
         raise HTTPException(401, "Invalid credentials")
@@ -1104,7 +1159,17 @@ async def ws_endpoint(ws: WebSocket, org_id: str, token: str = None):
                 avatar_color = u.get("avatar_color","#22d3ee")
         except Exception:
             pass
-    client_id = user_id or str(uuid.uuid4())[:8]
+
+    # Reject unauthenticated or non-member connections
+    if not user_id:
+        await ws.close(code=4001)
+        return
+    member = await db.org_members.find_one({"org_id": org_id, "user_id": user_id})
+    if not member:
+        await ws.close(code=4003)
+        return
+
+    client_id = user_id
     await ws_manager.connect(org_id, ws, client_id, user_id)
     await ws.send_text(json.dumps({"event": "connected", "data": {"client_id": client_id, "org_id": org_id}}))
     # Announce presence
@@ -1171,20 +1236,89 @@ async def _check_proposal_outcome(proposal: dict, user: dict):
                 subject_id=proposal["id"], payload={"proposal_id": proposal["id"]}
             ))
 
+async def _execute_workflow_node(node: dict, run: dict, org_config: dict) -> dict:
+    """Execute a single workflow node based on its type."""
+    ntype = (node.get("type") or node.get("data", {}).get("type") or "default").lower()
+    data  = node.get("data", {})
+
+    if ntype in ("trigger", "start"):
+        return {"status": "completed", "output": "triggered"}
+
+    elif ntype == "agent_task":
+        agent_id   = data.get("agent_id")
+        task_desc  = data.get("task_description") or data.get("label") or "Complete the assigned task"
+        if agent_id:
+            agent = await db.agents.find_one({"id": agent_id}, {"_id": 0})
+            if agent:
+                try:
+                    resp = await asyncio.wait_for(
+                        prov.call_model(
+                            task_type="default",
+                            system=agent.get("system_prompt") or f"You are {agent.get('name','Agent')}.",
+                            user=task_desc,
+                            openrouter_key=org_config.get("openrouter_key", ""),
+                        ),
+                        timeout=45,
+                    )
+                    output = resp.text[:1000] if resp.text else "[no output]"
+                    thought = {
+                        "id": gen_id(), "agent_id": agent_id, "org_id": agent["org_id"],
+                        "content": output, "thought_type": "workflow_task",
+                        "source": "workflow", "created_at": now_iso(),
+                    }
+                    await db.agent_thoughts.insert_one(thought)
+                    return {"status": "completed", "output": output}
+                except asyncio.TimeoutError:
+                    return {"status": "failed", "output": "task timed out"}
+                except Exception as exc:
+                    return {"status": "failed", "output": str(exc)}
+        return {"status": "completed", "output": "no agent configured"}
+
+    elif ntype == "http_request":
+        url    = data.get("url", "")
+        method = (data.get("method") or "GET").upper()
+        if url:
+            try:
+                async with httpx.AsyncClient(timeout=15) as c:
+                    r = await getattr(c, method.lower())(url)
+                    return {"status": "completed", "output": r.text[:500], "status_code": r.status_code}
+            except Exception as exc:
+                return {"status": "failed", "output": str(exc)}
+        return {"status": "skipped", "output": "no URL configured"}
+
+    elif ntype == "delay":
+        seconds = max(1, min(int(data.get("seconds") or data.get("delay", 2)), 30))
+        await asyncio.sleep(seconds)
+        return {"status": "completed", "output": f"delayed {seconds}s"}
+
+    elif ntype == "condition":
+        return {"status": "completed", "output": f"condition evaluated: {data.get('condition', '')}"}
+
+    else:
+        await asyncio.sleep(random.uniform(0.3, 0.8))
+        return {"status": "completed", "output": "step completed"}
+
+
 async def _execute_workflow(workflow: dict, run: dict):
     org_id = run["org_id"]
     run_id = run["id"]
     nodes  = workflow.get("nodes", [])
     edges  = workflow.get("edges", [])
+    org_config = await _get_org_config(org_id)
+
     await event_bus.publish(OrgEvent(
         event_type="workflow.run_started", org_id=org_id, actor_id="system",
         subject_id=run_id,
         payload={"run_id": run_id, "workflow_name": workflow["name"]}
     ))
+
     order = _topo_sort(nodes, edges)
+    run_failed = False
+
     for node_id in order:
         node = next((n for n in nodes if n["id"] == node_id), None)
-        if not node: continue
+        if not node:
+            continue
         await db.workflow_runs.update_one(
             {"id": run_id},
             {"$set": {f"step_states.{node_id}": {"status": "running", "started_at": now_iso()}}}
@@ -1193,24 +1327,37 @@ async def _execute_workflow(workflow: dict, run: dict):
             event_type="workflow.step_changed", org_id=org_id, actor_id="system",
             subject_id=run_id, payload={"run_id": run_id, "node_id": node_id, "status": "running"}
         ))
-        await asyncio.sleep(random.uniform(0.8, 2.0))
+        try:
+            result = await _execute_workflow_node(node, run, org_config)
+        except Exception as exc:
+            result = {"status": "failed", "output": str(exc)}
+
+        step_status = result.get("status", "completed")
+        if step_status == "failed":
+            run_failed = True
         await db.workflow_runs.update_one(
             {"id": run_id},
-            {"$set": {f"step_states.{node_id}": {"status": "completed", "completed_at": now_iso()}}}
+            {"$set": {f"step_states.{node_id}": {
+                "status": step_status,
+                "output": result.get("output", ""),
+                "completed_at": now_iso()
+            }}}
         )
         await event_bus.publish(OrgEvent(
             event_type="workflow.step_changed", org_id=org_id, actor_id="system",
-            subject_id=run_id, payload={"run_id": run_id, "node_id": node_id, "status": "completed"}
+            subject_id=run_id, payload={"run_id": run_id, "node_id": node_id, "status": step_status}
         ))
+
+    final_status = "failed" if run_failed else "completed"
     await db.workflow_runs.update_one(
-        {"id": run_id}, {"$set": {"status": "completed", "completed_at": now_iso()}}
+        {"id": run_id}, {"$set": {"status": final_status, "completed_at": now_iso()}}
     )
     await event_bus.publish(OrgEvent(
         event_type="workflow.run_completed", org_id=org_id, actor_id="system",
-        subject_id=run_id, payload={"run_id": run_id}
+        subject_id=run_id, payload={"run_id": run_id, "status": final_status}
     ))
     await _create_notif(org_id, None, "workflow_complete",
-        f"Workflow '{workflow['name']}' completed", "", "/workflows")
+        f"Workflow '{workflow['name']}' {final_status}", "", "/workflows")
 
 def _topo_sort(nodes: list, edges: list) -> list:
     adj = {n["id"]: [] for n in nodes}
@@ -1245,6 +1392,70 @@ async def _create_notification_for_event(event_type: str, org_id: str, actor_id:
     if event_type == "board.proposal_created":
         await _create_notif(org_id, None, "proposal_created",
             f"New proposal: {resource['title']}", resource.get('description',''), "/board")
+
+# ── Agent schedule runner ─────────────────────────────────────────────────
+async def _run_scheduled_task(agent: dict, sched: dict):
+    org_config = await _get_org_config(agent["org_id"])
+    task_desc = sched.get("task_description") or "Perform your scheduled task."
+    try:
+        resp = await asyncio.wait_for(
+            prov.call_model(
+                task_type="default",
+                system=agent.get("system_prompt") or f"You are {agent.get('name', 'Agent')}.",
+                user=task_desc,
+                openrouter_key=org_config.get("openrouter_key", ""),
+            ),
+            timeout=45,
+        )
+        output = resp.text[:1000] if resp.text else "[no output]"
+    except asyncio.TimeoutError:
+        output = "[scheduled task timed out]"
+    except Exception as exc:
+        output = f"[error: {exc}]"
+
+    thought = {
+        "id": gen_id(), "agent_id": agent["id"], "org_id": agent["org_id"],
+        "content": output, "thought_type": "scheduled_task",
+        "source": "schedule", "created_at": now_iso(),
+    }
+    await db.agent_thoughts.insert_one(thought)
+    await event_bus.publish(OrgEvent(
+        event_type="agent.scheduled_task", org_id=agent["org_id"], actor_id=agent["id"],
+        subject_id=agent["id"],
+        payload={"task": task_desc[:200], "output": output[:200], "schedule_id": sched["id"]}
+    ))
+
+async def _agent_schedule_runner():
+    """Background loop: fires enabled agent schedules when their next_run time is due."""
+    INTERVAL_DELTAS = {
+        "hourly": timedelta(hours=1),
+        "daily":  timedelta(days=1),
+        "weekly": timedelta(weeks=1),
+    }
+    while True:
+        try:
+            now = datetime.now(timezone.utc)
+            schedules = await db.agent_schedules.find({"enabled": True}, {"_id": 0}).to_list(200)
+            for sched in schedules:
+                try:
+                    next_run_str = sched.get("next_run") or ""
+                    next_run = datetime.fromisoformat(next_run_str.replace("Z", "+00:00"))
+                except Exception:
+                    continue
+                if now < next_run:
+                    continue
+                agent = await db.agents.find_one({"id": sched["agent_id"]}, {"_id": 0})
+                if not agent:
+                    continue
+                asyncio.create_task(_run_scheduled_task(agent, sched))
+                delta = INTERVAL_DELTAS.get(sched.get("interval", "daily"), timedelta(days=1))
+                await db.agent_schedules.update_one(
+                    {"id": sched["id"]},
+                    {"$set": {"last_run": now.isoformat(), "next_run": (now + delta).isoformat()}}
+                )
+        except Exception as exc:
+            logger.error(f"Schedule runner error: {exc}")
+        await asyncio.sleep(60)  # poll every minute
 
 async def _update_agent_reputation_on_vote(org_id: str, proposal_id: str):
     delib = await db.deliberations.find_one({"proposal_id": proposal_id, "org_id": org_id})
@@ -2303,6 +2514,16 @@ SKILLS_SEED = [
     {"id": "skill-decision", "name": "Decision",      "description": "Strategic decision-making",      "category": "strategic"},
 ]
 
+@app.get("/health")
+async def health_check():
+    """Public unauthenticated health check."""
+    try:
+        await db.command("ping")
+        db_ok = True
+    except Exception:
+        db_ok = False
+    return {"status": "ok" if db_ok else "degraded", "db": db_ok, "version": "4.0.0"}
+
 @app.on_event("startup")
 async def startup():
     for skill in SKILLS_SEED:
@@ -2331,6 +2552,7 @@ async def startup():
                     await getattr(db, col).create_index(idx[0], **idx[1])
             except Exception:
                 pass
+    asyncio.create_task(_agent_schedule_runner())
     logger.info("Neural-Org backend started — AI Operating System v4")
 
 @app.on_event("shutdown")

@@ -17,6 +17,7 @@ import MemoryPage from './pages/MemoryPage';
 import WarRoomPage from './pages/WarRoomPage';
 import SkillMarketplacePage from './pages/SkillMarketplacePage';
 import MyAgentsPage from './pages/MyAgentsPage';
+import OAuthCallbackPage from './pages/OAuthCallbackPage';
 import AppLayout from './components/Layout/AppLayout';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -53,7 +54,8 @@ function App() {
       <AuthProvider>
         <BrowserRouter>
           <Routes>
-            <Route path="/login"       element={<PublicRoute><LoginPage /></PublicRoute>} />
+            <Route path="/login"        element={<PublicRoute><LoginPage /></PublicRoute>} />
+            <Route path="/auth/callback" element={<OAuthCallbackPage />} />
             <Route path="/dashboard"   element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
             <Route path="/org-chart"   element={<ProtectedRoute><OrgChartPage /></ProtectedRoute>} />
             <Route path="/agents"      element={<ProtectedRoute><AgentsPage /></ProtectedRoute>} />

@@ -52,8 +52,14 @@ export function AuthProvider({ children }) {
     });
   }, []);
 
+  const loginWithToken = useCallback((token, u) => {
+    localStorage.setItem('openclaw_token', token);
+    localStorage.setItem('openclaw_user', JSON.stringify(u));
+    setUser(u);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, updateUser, loginWithToken }}>
       {children}
     </AuthContext.Provider>
   );

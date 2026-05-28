@@ -27,9 +27,12 @@ api.interceptors.response.use(
 export default api;
 
 export const authAPI = {
-  register: d => api.post('/auth/register', d),
-  login:    d => api.post('/auth/login', d),
-  me:       ()  => api.get('/auth/me'),
+  register:        d  => api.post('/auth/register', d),
+  login:           d  => api.post('/auth/login', d),
+  me:              ()  => api.get('/auth/me'),
+  oauthConfig:     ()  => api.get('/auth/oauth-config'),
+  githubCallback:  d  => api.post('/auth/github/callback', d),
+  googleCallback:  d  => api.post('/auth/google/callback', d),
 };
 
 export const userConfigAPI = {

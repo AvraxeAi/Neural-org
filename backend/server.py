@@ -262,6 +262,10 @@ class RegisterReq(BaseModel):
 class LoginReq(BaseModel):
     email: str; password: str
 
+class OAuthCallbackReq(BaseModel):
+    code: str
+    redirect_uri: str
+
 class OrgCreate(BaseModel):
     name: str; description: str = ""
 
@@ -406,6 +410,126 @@ async def clear_my_keys(user=Depends(get_current_user)):
         {"$unset": {"openrouter_key": "", "emergent_key": ""}}
     )
     return {"ok": True}
+
+# ── OAuth ─────────────────────────────────────────────────────────────────
+@api_router.get("/auth/oauth-config")
+async def oauth_config():
+    """Public — returns OAuth client IDs so the frontend can build auth URLs."""
+    return {
+        "github_client_id": os.environ.get("GITHUB_CLIENT_ID", ""),
+        "google_client_id":  os.environ.get("GOOGLE_CLIENT_ID",  ""),
+    }
+
+async def _upsert_oauth_user(provider: str, oauth_id: str, email: str, name: str, avatar_url: str = "") -> dict:
+    """Find or create a user from OAuth data, return the user doc."""
+    user = await db.users.find_one(
+        {"$or": [{"oauth_id": oauth_id, "oauth_provider": provider}, {"email": email.lower()}]},
+        {"_id": 0}
+    )
+    if user:
+        await db.users.update_one(
+            {"id": user["id"]},
+            {"$set": {"oauth_provider": provider, "oauth_id": oauth_id, "oauth_avatar": avatar_url}}
+        )
+        user["oauth_provider"] = provider
+        return user
+    user = {
+        "id": gen_id(), "email": email.lower(), "name": name,
+        "password_hash": hash_password(gen_id()),  # unusable random password
+        "oauth_provider": provider, "oauth_id": oauth_id, "oauth_avatar": avatar_url,
+        "avatar_color": random.choice(AVATAR_COLORS),
+        "created_at": now_iso(),
+    }
+    await db.users.insert_one(user)
+    return user
+
+@api_router.post("/auth/github/callback")
+async def github_callback(req: OAuthCallbackReq, request: Request):
+    _check_rate_limit(f"oauth:{request.client.host}", max_calls=20, window=300)
+    client_id     = os.environ.get("GITHUB_CLIENT_ID", "")
+    client_secret = os.environ.get("GITHUB_CLIENT_SECRET", "")
+    if not client_id or not client_secret:
+        raise HTTPException(503, "GitHub OAuth not configured on this server")
+
+    async with httpx.AsyncClient(timeout=15) as c:
+        # Exchange code for access token
+        token_res = await c.post(
+            "https://github.com/login/oauth/access_token",
+            data={"client_id": client_id, "client_secret": client_secret,
+                  "code": req.code, "redirect_uri": req.redirect_uri},
+            headers={"Accept": "application/json"},
+        )
+        token_data = token_res.json()
+        access_token = token_data.get("access_token", "")
+        if not access_token:
+            raise HTTPException(400, f"GitHub token exchange failed: {token_data.get('error_description','unknown error')}")
+
+        gh_headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+
+        # Get user profile
+        profile = (await c.get("https://api.github.com/user", headers=gh_headers)).json()
+
+        # GitHub may not expose email publicly — fetch from emails endpoint
+        email = profile.get("email") or ""
+        if not email:
+            emails_res = await c.get("https://api.github.com/user/emails", headers=gh_headers)
+            emails = emails_res.json() if emails_res.status_code == 200 else []
+            primary = next((e["email"] for e in emails if e.get("primary") and e.get("verified")), "")
+            email = primary or next((e["email"] for e in emails), "")
+
+    if not email:
+        raise HTTPException(400, "Could not retrieve a verified email from GitHub. Make sure your GitHub account has a verified email.")
+
+    user = await _upsert_oauth_user(
+        provider="github",
+        oauth_id=str(profile["id"]),
+        email=email,
+        name=profile.get("name") or profile.get("login") or email.split("@")[0],
+        avatar_url=profile.get("avatar_url", ""),
+    )
+    token = create_token({"sub": user["id"]})
+    safe_user = {k: v for k, v in user.items() if k not in ("password_hash", "_id")}
+    return {"token": token, "user": safe_user}
+
+@api_router.post("/auth/google/callback")
+async def google_callback(req: OAuthCallbackReq, request: Request):
+    _check_rate_limit(f"oauth:{request.client.host}", max_calls=20, window=300)
+    client_id     = os.environ.get("GOOGLE_CLIENT_ID", "")
+    client_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+    if not client_id or not client_secret:
+        raise HTTPException(503, "Google OAuth not configured on this server")
+
+    async with httpx.AsyncClient(timeout=15) as c:
+        token_res = await c.post(
+            "https://oauth2.googleapis.com/token",
+            data={"code": req.code, "client_id": client_id, "client_secret": client_secret,
+                  "redirect_uri": req.redirect_uri, "grant_type": "authorization_code"},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        token_data = token_res.json()
+        access_token = token_data.get("access_token", "")
+        if not access_token:
+            raise HTTPException(400, f"Google token exchange failed: {token_data.get('error_description','unknown error')}")
+
+        profile = (await c.get(
+            "https://www.googleapis.com/oauth2/v3/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )).json()
+
+    email = profile.get("email", "")
+    if not email:
+        raise HTTPException(400, "Could not retrieve email from Google account")
+
+    user = await _upsert_oauth_user(
+        provider="google",
+        oauth_id=profile.get("sub", ""),
+        email=email,
+        name=profile.get("name") or email.split("@")[0],
+        avatar_url=profile.get("picture", ""),
+    )
+    token = create_token({"sub": user["id"]})
+    safe_user = {k: v for k, v in user.items() if k not in ("password_hash", "_id")}
+    return {"token": token, "user": safe_user}
 
 # ════════════════════════════════════════════════════════════════════════════
 # ② ORGS

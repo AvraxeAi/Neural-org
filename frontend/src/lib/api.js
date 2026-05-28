@@ -32,6 +32,12 @@ export const authAPI = {
   me:       ()  => api.get('/auth/me'),
 };
 
+export const userConfigAPI = {
+  get:       ()  => api.get('/me/config'),
+  update:    d   => api.put('/me/config', d),
+  clearKeys: ()  => api.delete('/me/config/keys'),
+};
+
 export const orgAPI = {
   list:             ()           => api.get('/orgs'),
   create:           d            => api.post('/orgs', d),

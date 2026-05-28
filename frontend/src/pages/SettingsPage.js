@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useOrg } from '../contexts/OrgContext';
-import { orgAPI } from '../lib/api';
+import { orgAPI, userConfigAPI } from '../lib/api';
 import api from '../lib/api';
 import { toast } from 'sonner';
 import {
@@ -30,6 +30,9 @@ export default function SettingsPage() {
   const [swapRequests, setSwapRequests] = useState([]);
   const [reviewNotes, setReviewNotes] = useState({});
   const [reviewingId, setReviewingId] = useState(null);
+  const [myKeys, setMyKeys] = useState({ openrouter_key:'', emergent_key:'', preferred_provider:'', preferred_model:'' });
+  const [savingMyKeys, setSavingMyKeys] = useState(false);
+  const [myKeysStatus, setMyKeysStatus] = useState({ has_openrouter_key: false, has_emergent_key: false });
 
   const fetchMembers = useCallback(async () => {
     if (!currentOrg) return;
@@ -48,6 +51,19 @@ export default function SettingsPage() {
   }, [currentOrg]);
 
   useEffect(() => { fetchMembers(); }, [fetchMembers]);
+
+  useEffect(() => {
+    userConfigAPI.get().then(res => {
+      const d = res.data;
+      setMyKeysStatus({ has_openrouter_key: d.has_openrouter_key, has_emergent_key: d.has_emergent_key });
+      setMyKeys({
+        openrouter_key: d.openrouter_key || '',
+        emergent_key:   d.emergent_key   || '',
+        preferred_provider: d.preferred_provider || '',
+        preferred_model:    d.preferred_model    || '',
+      });
+    }).catch(() => {});
+  }, []);
 
   const refreshInvite = async () => {
     setLoading(true);
@@ -371,6 +387,111 @@ export default function SettingsPage() {
                   <Input value={user?.id || ''} readOnly
                     className="font-mono text-xs"
                     style={{background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)'}} />
+                </div>
+              </div>
+            </div>
+
+            {/* My API Keys */}
+            <div className="rounded-2xl p-5" style={{background:'var(--surface-1)', border:'1px solid rgba(255,255,255,0.07)'}}>
+              <div className="flex items-center gap-2 mb-1">
+                <Key size={15} style={{color:'#a78bfa'}} />
+                <h3 className="text-sm font-semibold" style={{fontFamily:'Space Grotesk'}}>My API Keys</h3>
+              </div>
+              <p className="text-xs mb-4" style={{color:'rgba(255,255,255,0.4)'}}>
+                Your personal keys are used for your agent's LLM calls. They override any org-level keys — only your agent uses your tokens.
+              </p>
+
+              {/* Key status badges */}
+              <div className="flex gap-2 mb-4">
+                <span className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
+                  style={{background: myKeysStatus.has_openrouter_key ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.05)',
+                          color: myKeysStatus.has_openrouter_key ? '#10b981' : 'rgba(255,255,255,0.3)',
+                          border: `1px solid ${myKeysStatus.has_openrouter_key ? 'rgba(16,185,129,0.25)' : 'rgba(255,255,255,0.08)'}`}}>
+                  {myKeysStatus.has_openrouter_key ? <CheckCircle2 size={11}/> : <XCircle size={11}/>}
+                  OpenRouter
+                </span>
+                <span className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
+                  style={{background: myKeysStatus.has_emergent_key ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.05)',
+                          color: myKeysStatus.has_emergent_key ? '#10b981' : 'rgba(255,255,255,0.3)',
+                          border: `1px solid ${myKeysStatus.has_emergent_key ? 'rgba(16,185,129,0.25)' : 'rgba(255,255,255,0.08)'}`}}>
+                  {myKeysStatus.has_emergent_key ? <CheckCircle2 size={11}/> : <XCircle size={11}/>}
+                  Emergent / OpenAI
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-xs mb-1.5 block" style={{color:'rgba(255,255,255,0.5)'}}>OpenRouter Key</Label>
+                  <Input
+                    type="password"
+                    value={myKeys.openrouter_key}
+                    onChange={e => setMyKeys(p => ({...p, openrouter_key: e.target.value}))}
+                    placeholder="sk-or-... (DeepSeek + 300 models)"
+                    className="font-mono text-xs"
+                    style={{background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)'}}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs mb-1.5 block" style={{color:'rgba(255,255,255,0.5)'}}>Emergent / OpenAI Key</Label>
+                  <Input
+                    type="password"
+                    value={myKeys.emergent_key}
+                    onChange={e => setMyKeys(p => ({...p, emergent_key: e.target.value}))}
+                    placeholder="Personal key for OpenAI / Anthropic / Gemini"
+                    className="font-mono text-xs"
+                    style={{background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)'}}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs mb-1.5 block" style={{color:'rgba(255,255,255,0.5)'}}>Preferred Provider</Label>
+                    <Input
+                      value={myKeys.preferred_provider}
+                      onChange={e => setMyKeys(p => ({...p, preferred_provider: e.target.value}))}
+                      placeholder="openai / anthropic / openrouter"
+                      style={{background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', fontSize:12}}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs mb-1.5 block" style={{color:'rgba(255,255,255,0.5)'}}>Preferred Model</Label>
+                    <Input
+                      value={myKeys.preferred_model}
+                      onChange={e => setMyKeys(p => ({...p, preferred_model: e.target.value}))}
+                      placeholder="e.g. gpt-4.1-mini"
+                      style={{background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', fontSize:12}}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <Button
+                    onClick={async () => {
+                      setSavingMyKeys(true);
+                      try {
+                        await userConfigAPI.update(myKeys);
+                        const r = await userConfigAPI.get();
+                        setMyKeysStatus({ has_openrouter_key: r.data.has_openrouter_key, has_emergent_key: r.data.has_emergent_key });
+                        toast.success('Your keys saved!');
+                      } catch { toast.error('Failed to save'); } finally { setSavingMyKeys(false); }
+                    }}
+                    disabled={savingMyKeys}
+                    style={{background:'hsl(var(--primary))', color:'hsl(var(--primary-foreground))'}}>
+                    {savingMyKeys ? 'Saving...' : 'Save My Keys'}
+                  </Button>
+                  {(myKeysStatus.has_openrouter_key || myKeysStatus.has_emergent_key) && (
+                    <Button
+                      variant="outline"
+                      onClick={async () => {
+                        try {
+                          await userConfigAPI.clearKeys();
+                          setMyKeys(p => ({...p, openrouter_key:'', emergent_key:''}));
+                          setMyKeysStatus({ has_openrouter_key: false, has_emergent_key: false });
+                          toast.success('Keys cleared');
+                        } catch { toast.error('Failed to clear'); }
+                      }}
+                      style={{border:'1px solid rgba(239,68,68,0.3)', color:'#ef4444', background:'rgba(239,68,68,0.05)'}}>
+                      Clear Keys
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>

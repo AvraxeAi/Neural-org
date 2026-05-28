@@ -240,6 +240,21 @@ async def _get_org_config(org_id: str) -> dict:
         "api_key": cfg.get("api_key", ""),
     }
 
+async def _get_effective_config(org_id: str, user_id: str = "") -> dict:
+    """Merge config: user keys override org keys override env defaults."""
+    cfg = await _get_org_config(org_id)
+    if user_id:
+        ucfg = await db.user_configs.find_one({"user_id": user_id}, {"_id": 0}) or {}
+        if ucfg.get("openrouter_key"):
+            cfg["openrouter_key"] = ucfg["openrouter_key"]
+        if ucfg.get("emergent_key"):
+            cfg["api_key"] = ucfg["emergent_key"]
+        if ucfg.get("preferred_provider"):
+            cfg["provider"] = ucfg["preferred_provider"]
+        if ucfg.get("preferred_model"):
+            cfg["model"] = ucfg["preferred_model"]
+    return cfg
+
 # ── Pydantic request models ───────────────────────────────────────────────
 class RegisterReq(BaseModel):
     email: str; password: str; name: str
@@ -255,6 +270,12 @@ class OrgConfigUpdate(BaseModel):
     default_model: Optional[str] = None
     openrouter_key: Optional[str] = None
     api_key: Optional[str] = None
+
+class UserConfigUpdate(BaseModel):
+    openrouter_key: Optional[str] = None   # personal OpenRouter key
+    emergent_key: Optional[str] = None     # personal Emergent/OpenAI key
+    preferred_provider: Optional[str] = None
+    preferred_model: Optional[str] = None
 
 class JoinOrgReq(BaseModel):
     invite_code: str; agent_id: str
@@ -356,6 +377,35 @@ async def login(req: LoginReq, request: Request):
 @api_router.get("/auth/me")
 async def me(user=Depends(get_current_user)):
     return {k: v for k, v in user.items() if k != "password_hash"}
+
+@api_router.get("/me/config")
+async def get_my_config(user=Depends(get_current_user)):
+    cfg = await db.user_configs.find_one({"user_id": user["id"]}, {"_id": 0}) or {}
+    return {
+        "has_openrouter_key": bool(cfg.get("openrouter_key")),
+        "has_emergent_key":   bool(cfg.get("emergent_key")),
+        "openrouter_key":     cfg.get("openrouter_key", ""),
+        "emergent_key":       cfg.get("emergent_key", ""),
+        "preferred_provider": cfg.get("preferred_provider", ""),
+        "preferred_model":    cfg.get("preferred_model", ""),
+    }
+
+@api_router.put("/me/config")
+async def update_my_config(req: UserConfigUpdate, user=Depends(get_current_user)):
+    update = {k: v for k, v in req.model_dump().items() if v is not None}
+    if update:
+        await db.user_configs.update_one(
+            {"user_id": user["id"]}, {"$set": update}, upsert=True
+        )
+    return {"ok": True}
+
+@api_router.delete("/me/config/keys")
+async def clear_my_keys(user=Depends(get_current_user)):
+    await db.user_configs.update_one(
+        {"user_id": user["id"]},
+        {"$unset": {"openrouter_key": "", "emergent_key": ""}}
+    )
+    return {"ok": True}
 
 # ════════════════════════════════════════════════════════════════════════════
 # ② ORGS
@@ -716,7 +766,7 @@ async def start_deliberation(org_id: str, req: DeliberationStart, user=Depends(g
     agents = await db.agents.find({"org_id": org_id}, {"_id": 0}).to_list(10)
     if not agents:
         raise HTTPException(400, "No agents in this org to deliberate")
-    org_config = await _get_org_config(org_id)
+    org_config = await _get_effective_config(org_id, user["id"])
     # Create deliberation record
     delib_id = gen_id()
     delib_doc = {
@@ -903,7 +953,7 @@ async def run_workflow(workflow_id: str, user=Depends(get_current_user)):
         "status": "running", "step_states": {}, "started_at": now_iso(), "completed_at": None
     }
     await db.workflow_runs.insert_one(run)
-    asyncio.create_task(_execute_workflow(w, run))
+    asyncio.create_task(_execute_workflow(w, run, triggered_by=user["id"]))
     return serialize_doc(run)
 
 @api_router.get("/workflow-runs/{run_id}")
@@ -1299,12 +1349,12 @@ async def _execute_workflow_node(node: dict, run: dict, org_config: dict) -> dic
         return {"status": "completed", "output": "step completed"}
 
 
-async def _execute_workflow(workflow: dict, run: dict):
+async def _execute_workflow(workflow: dict, run: dict, triggered_by: str = ""):
     org_id = run["org_id"]
     run_id = run["id"]
     nodes  = workflow.get("nodes", [])
     edges  = workflow.get("edges", [])
-    org_config = await _get_org_config(org_id)
+    org_config = await _get_effective_config(org_id, triggered_by or run.get("triggered_by", ""))
 
     await event_bus.publish(OrgEvent(
         event_type="workflow.run_started", org_id=org_id, actor_id="system",
@@ -1395,7 +1445,8 @@ async def _create_notification_for_event(event_type: str, org_id: str, actor_id:
 
 # ── Agent schedule runner ─────────────────────────────────────────────────
 async def _run_scheduled_task(agent: dict, sched: dict):
-    org_config = await _get_org_config(agent["org_id"])
+    creator_id = sched.get("created_by") or agent.get("created_by", "")
+    org_config = await _get_effective_config(agent["org_id"], creator_id)
     task_desc = sched.get("task_description") or "Perform your scheduled task."
     try:
         resp = await asyncio.wait_for(
@@ -2543,6 +2594,7 @@ async def startup():
         ("org_chart_change_proposals", [([("org_id",1),("status",1)], {})]),
         ("org_chart_audit_log",        [([("org_id",1),("created_at",-1)], {})]),
         ("org_chart_configs",          [([("org_id",1)], {"unique": True})]),
+        ("user_configs",               [([("user_id",1)], {"unique": True})]),
     ]:
         for idx in idxs:
             try:

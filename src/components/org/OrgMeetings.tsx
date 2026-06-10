@@ -25,9 +25,9 @@ export function OrgMeetings() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Inner tab bar */}
-      <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.5)', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 10, padding: 4, width: 'fit-content' }}>
+      <div style={{ display: 'flex', gap: 4, background: 'var(--surface-raise)', border: '1px solid var(--border)', borderRadius: 10, padding: 4, width: 'fit-content' }}>
         {[['meetings','◷ Meetings'],['board','📋 Board Mode'],['votes','🗳 Votes']].map(([id,label]) => (
-          <button key={id} onClick={() => setTab(id as any)} style={{ padding: '6px 14px', borderRadius: 7, border: 'none', background: tab === id ? 'white' : 'transparent', fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: tab === id ? 700 : 500, color: tab === id ? 'var(--text-primary)' : 'var(--text-muted)', cursor: 'pointer', transition: 'all 0.15s', boxShadow: tab === id ? '0 2px 8px rgba(0,0,0,0.08)' : 'none' }}>{label}</button>
+          <button key={id} onClick={() => setTab(id as any)} style={{ padding: '6px 14px', borderRadius: 7, border: 'none', background: tab === id ? 'var(--surface-hover)' : 'transparent', color: tab === id ? 'var(--text-primary)' : 'var(--text-muted)', fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: tab === id ? 700 : 500, cursor: 'pointer', transition: 'all 0.15s', boxShadow: 'none' }}>{label}</button>
         ))}
       </div>
 
@@ -39,7 +39,7 @@ export function OrgMeetings() {
           </div>
           {MEETINGS.map(m => (
             <div key={m.id} className="glass-card" style={{ padding: '16px 20px', display: 'flex', gap: 16, alignItems: 'center' }}>
-              <div style={{ width: 48, height: 48, borderRadius: 12, background: m.status === 'upcoming' ? 'rgba(0,230,168,0.1)' : 'rgba(0,0,0,0.05)', border: `1.5px solid ${m.status === 'upcoming' ? 'rgba(0,230,168,0.3)' : 'rgba(0,0,0,0.08)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
+              <div style={{ width: 48, height: 48, borderRadius: 12, background: m.status === 'upcoming' ? 'rgba(0,230,168,0.1)' : 'var(--border)', border: `1.5px solid ${m.status === 'upcoming' ? 'rgba(0,230,168,0.3)' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
                 {m.type === 'Board' ? '📋' : m.type === 'Team' ? '👥' : m.type === 'External' ? '🤝' : '💼'}
               </div>
               <div style={{ flex: 1 }}>
@@ -53,7 +53,7 @@ export function OrgMeetings() {
                 </div>
                 <div style={{ display: 'flex', gap: 5, marginTop: 7, flexWrap: 'wrap' }}>
                   {m.attendees.map(a => (
-                    <span key={a} style={{ fontSize: 10, background: 'rgba(0,0,0,0.06)', borderRadius: 6, padding: '2px 7px', color: 'var(--text-secondary)' }}>{a}</span>
+                    <span key={a} style={{ fontSize: 10, background: 'var(--border)', borderRadius: 6, padding: '2px 7px', color: 'var(--text-secondary)' }}>{a}</span>
                   ))}
                 </div>
               </div>
@@ -104,8 +104,8 @@ export function OrgMeetings() {
                   { n: 3, item: 'Marcus T. Role Promotion', status: 'pending' },
                   { n: 4, item: 'Beta Launch Timeline', status: 'pending' },
                 ].map(a => (
-                  <div key={a.n} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '9px 0', borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
-                    <div style={{ width: 22, height: 22, borderRadius: '50%', background: a.status === 'done' ? 'rgba(0,201,122,0.15)' : a.status === 'active' ? 'rgba(0,230,168,0.15)' : 'rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: a.status === 'done' ? 'var(--status-green)' : a.status === 'active' ? 'var(--accent-dark)' : 'var(--text-muted)', flexShrink: 0 }}>
+                  <div key={a.n} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '9px 0', borderBottom: '1px solid var(--border)' }}>
+                    <div style={{ width: 22, height: 22, borderRadius: '50%', background: a.status === 'done' ? 'rgba(0,201,122,0.15)' : a.status === 'active' ? 'rgba(0,230,168,0.15)' : 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: a.status === 'done' ? 'var(--status-green)' : a.status === 'active' ? 'var(--accent-dark)' : 'var(--text-muted)', flexShrink: 0 }}>
                       {a.status === 'done' ? '✓' : a.n}
                     </div>
                     <span style={{ fontSize: 13, fontWeight: a.status === 'active' ? 700 : 500, color: a.status === 'active' ? 'var(--text-primary)' : a.status === 'done' ? 'var(--text-muted)' : 'var(--text-secondary)', flex: 1 }}>{a.item}</span>
@@ -142,7 +142,7 @@ export function OrgMeetings() {
 
                 {/* Vote bar */}
                 <div style={{ marginBottom: 12 }}>
-                  <div style={{ height: 8, background: 'rgba(0,0,0,0.06)', borderRadius: 99, overflow: 'hidden', display: 'flex' }}>
+                  <div style={{ height: 8, background: 'var(--border)', borderRadius: 99, overflow: 'hidden', display: 'flex' }}>
                     <div style={{ width: `${yesPct}%`, background: 'var(--status-green)', borderRadius: '99px 0 0 99px', transition: 'width 0.6s' }} />
                     <div style={{ width: `${noPct}%`, background: 'var(--status-red)', borderRadius: '0 99px 99px 0', transition: 'width 0.6s' }} />
                   </div>

@@ -12,6 +12,8 @@ export type ProviderUsage = {
   resetDate?: string;
 };
 
+export type ProviderId = ProviderUsage['provider'];
+
 export const DEFAULT_PROVIDER_USAGE: ProviderUsage[] = [
   { provider: 'openai', displayName: 'Codex / OpenAI', status: 'disconnected' },
   { provider: 'claude', displayName: 'Claude (Anthropic)', status: 'disconnected' },
@@ -51,13 +53,100 @@ const DEFAULT_SUMMARY: GatewaySummary = {
   message: 'Set VITE_API_BASE_URL to wire the real gateway API.',
 };
 
+export function getToken(): string {
+  return (window as any).__OPENCLAW_TOKEN || appConfig.gatewayToken || '';
+}
+
+export function authHeaders(): Record<string, string> {
+  const tok = getToken();
+  return tok
+    ? { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' }
+    : { 'Content-Type': 'application/json' };
+}
+
+export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), appConfig.apiTimeoutMs);
+  const body = init?.body;
+  const headers = { ...authHeaders(), ...(init?.headers as any) };
+  const url = path.startsWith('http') ? path : `${appConfig.apiBaseUrl}/api${path.startsWith('/') ? path : `/${path}`}`;
+  if (body instanceof FormData) delete (headers as any)['Content-Type'];
+  try {
+    const res = await fetch(url, {
+      ...init,
+      headers,
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json() as Promise<T>;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export const agentsApi = {
+  list: () => apiFetch<any[]>('/agents'),
+  create: (body: any) => apiFetch<any>('/agents', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: string, body: any) => apiFetch<any>(`/agents/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  clone: (id: string) => apiFetch<any>(`/agents/${id}/clone`, { method: 'POST', body: '{}' }),
+  disable: (id: string) => apiFetch<any>(`/agents/${id}/disable`, { method: 'POST', body: '{}' }),
+  goals: (id: string) => apiFetch<any[]>(`/agents/${encodeURIComponent(id)}/goals`),
+  addGoal: (id: string, body: any) => apiFetch<any>(`/agents/${encodeURIComponent(id)}/goals`, { method: 'POST', body: JSON.stringify(body) }),
+  schedule: (id: string) => apiFetch<any[]>(`/agents/${encodeURIComponent(id)}/schedule`),
+};
+
+export const memoryApi = {
+  list: () => apiFetch<any[]>('/memory'),
+  create: (body: any) => apiFetch<any>('/memory', { method: 'POST', body: JSON.stringify(body) }),
+  update: (key: string, body: any) => apiFetch<any>(`/memory/${encodeURIComponent(key)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  remove: (key: string) => apiFetch<any>(`/memory/${encodeURIComponent(key)}`, { method: 'DELETE' }),
+};
+
+export const workflowsApi = {
+  list: () => apiFetch<any[]>('/workflows'),
+  save: (id: string, body: any) => apiFetch<any>(`/workflows/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deploy: (id: string) => apiFetch<any>('/workflows/deploy', { method: 'POST', body: JSON.stringify({ id }) }),
+};
+
+export const metricsApi = {
+  get: () => apiFetch<any>('/analytics/summary'),
+};
+
+export const orgsApi = {
+  list: () => apiFetch<any[]>(`${appConfig.apiBaseUrl}/orgs`),
+};
+
+export const orgTasksApi = {
+  list: () => apiFetch<any[]>('/tasks'),
+  create: (body: any) => apiFetch<any>('/tasks', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: string, body: any) => apiFetch<any>(`/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+};
+
+export async function chatSend(body: {
+  message: string;
+  agent_id: string;
+  model: string;
+  memory_scope: string;
+  user_id?: string;
+  org_id?: string | null;
+  project_id?: string | null;
+  chat_id?: string | null;
+  threadId?: string | null;
+}): Promise<Response> {
+  return fetch('/chat/send', {
+    method: 'POST',
+    headers: { ...authHeaders(), Accept: 'text/event-stream' },
+    body: JSON.stringify(body),
+  });
+}
+
 async function request<T>(path: string): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), appConfig.apiTimeoutMs);
 
   try {
-    const response = await fetch(`${appConfig.apiBaseUrl}${path}`, {
-      headers: { Accept: 'application/json' },
+    const response = await fetch(`${appConfig.apiBaseUrl}/api${path}`, {
+      headers: { ...authHeaders(), Accept: 'application/json' },
       signal: controller.signal,
     });
 

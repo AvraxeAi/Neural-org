@@ -1,0 +1,93 @@
+- generic [ref=e442]:
+  - complementary [ref=e443]:
+    - generic [ref=e444]:
+      - button "O" [ref=e445] [cursor=pointer]
+      - button [ref=e446] [cursor=pointer]:
+        - img [ref=e447]
+    - navigation [ref=e448]:
+      - button "New Chat" [ref=e449] [cursor=pointer]:
+        - img [ref=e450]
+        - text: New Chat
+      - button "Search" [ref=e452] [cursor=pointer]:
+        - img [ref=e453]
+        - text: Search
+      - button "Notes" [ref=e456] [cursor=pointer]:
+        - img [ref=e457]
+        - text: Notes
+      - button "Workspace" [ref=e460] [cursor=pointer]:
+        - img [ref=e461]
+        - text: Workspace
+    - generic [ref=e463]: Chats
+    - generic [ref=e464]:
+      - generic [ref=e465]:
+        - generic [ref=e466]: Today
+        - button "Q2 Budget Proposal" [ref=e467] [cursor=pointer]:
+          - generic [ref=e468]: Q2 Budget Proposal
+          - img [ref=e469]
+        - button "Security Audit Findings" [ref=e473] [cursor=pointer]:
+          - generic [ref=e474]: Security Audit Findings
+        - button "Workflow Automation" [ref=e475] [cursor=pointer]:
+          - generic [ref=e476]: Workflow Automation
+        - button "Agent Performance" [ref=e477] [cursor=pointer]:
+          - generic [ref=e478]: Agent Performance
+      - generic [ref=e479]:
+        - generic [ref=e480]: Yesterday
+        - button "Board Meeting Summary" [ref=e481] [cursor=pointer]:
+          - generic [ref=e482]: Board Meeting Summary
+        - button "Marketing Strategy" [ref=e483] [cursor=pointer]:
+          - generic [ref=e484]: Marketing Strategy
+      - generic [ref=e485]:
+        - generic [ref=e486]: Previous 7 Days
+        - button "Hiring Plan" [ref=e487] [cursor=pointer]:
+          - generic [ref=e488]: Hiring Plan
+        - button "Product Roadmap" [ref=e489] [cursor=pointer]:
+          - generic [ref=e490]: Product Roadmap
+    - button "RK Rusty Admin" [ref=e491] [cursor=pointer]:
+      - generic [ref=e492]: RK
+      - generic [ref=e493]:
+        - strong [ref=e494]: Rusty
+        - generic [ref=e495]: Admin
+      - img [ref=e496]
+  - main [ref=e498]:
+    - generic [ref=e499]:
+      - button "gpt-4.1-nano" [ref=e501] [cursor=pointer]:
+        - text: gpt-4.1-nano
+        - img [ref=e502]
+      - button [ref=e504] [cursor=pointer]:
+        - img [ref=e505]
+      - button [ref=e506] [cursor=pointer]:
+        - img [ref=e507]
+      - button [ref=e510] [cursor=pointer]:
+        - img [ref=e511]
+      - generic [ref=e513]: RK
+    - generic [ref=e514]:
+      - img [ref=e516]
+      - heading "How can I help you today?" [level=1] [ref=e519]
+    - generic [ref=e520]:
+      - generic [ref=e521]:
+        - textbox "Message gpt-4.1-nano" [ref=e522]
+        - generic [ref=e523]:
+          - button [ref=e524] [cursor=pointer]:
+            - img [ref=e525]
+          - button [ref=e527] [cursor=pointer]:
+            - img [ref=e528]
+          - button [ref=e529] [cursor=pointer]:
+            - img [ref=e530]
+          - button "Send" [ref=e533] [cursor=pointer]:
+            - img [ref=e534]
+      - generic [ref=e537]:
+        - button "Analyze this data" [ref=e538] [cursor=pointer]:
+          - img [ref=e539]
+          - text: Analyze this data
+        - button "Summarize meeting notes" [ref=e541] [cursor=pointer]:
+          - img [ref=e542]
+          - text: Summarize meeting notes
+        - button "Draft a proposal" [ref=e545] [cursor=pointer]:
+          - img [ref=e546]
+          - text: Draft a proposal
+        - button "Explain a concept" [ref=e548] [cursor=pointer]:
+          - img [ref=e549]
+          - text: Explain a concept
+    - generic [ref=e551]:
+      - text: OpenClaw Command Center may produce inaccurate information.
+      - generic [ref=e552]: "?"

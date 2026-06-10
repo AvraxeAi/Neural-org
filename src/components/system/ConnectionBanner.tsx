@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { GatewaySummary } from '../../lib/api';
 
-export function ConnectionBanner({ summary }: { summary: GatewaySummary }) {
+export function ConnectionBanner({ summary, onConfigure }: { summary: GatewaySummary; onConfigure: () => void }) {
   const [dismissed, setDismissed] = useState(false);
 
   if (dismissed || summary.ok) return null;
@@ -41,9 +41,7 @@ export function ConnectionBanner({ summary }: { summary: GatewaySummary }) {
           whiteSpace: 'nowrap',
           flexShrink: 0,
         }}
-        onClick={() => {
-          /* Navigate to settings — wire up if needed */
-        }}
+        onClick={onConfigure}
       >
         Configure API
       </button>

@@ -1,37 +1,32 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import {
+  Sun, ArrowRight, Shield, Building2, MessageSquare, Vote,
+  Bell, Plus, CheckSquare, AlertTriangle, User, Bot,
+  ChevronRight, Clock,
+} from 'lucide-react';
+import { agentsApi, orgTasksApi } from '../../lib/api';
+import { memSvc } from '../../lib/memoryApi';
 
-const KPI = [
-  { label: 'Active Agents',   val: '3',      delta: '+1',   good: true,  icon: '◎', color: '#00E6A8' },
-  { label: 'Token Velocity',  val: '1.2k/m', delta: '+12%', good: true,  icon: '⚡', color: '#3B82F6' },
-  { label: 'Daily Cost',      val: '$0.34',  delta: '-8%',  good: true,  icon: '◷', color: '#8B5CF6' },
-  { label: 'System Latency',  val: '4ms',    delta: 'p99',  good: true,  icon: '◌', color: '#00E6A8' },
-];
+function timeAgo(ts: number): string {
+  const sec = Math.floor((Date.now() / 1000) - ts);
+  if (sec < 60) return 'just now';
+  if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
+  return `${Math.floor(sec / 86400)}d ago`;
+}
 
-const ACTIVITY = [
-  { time: '2m ago',  icon: '◎', text: 'Orchestrator completed contract review task',  tag: 'Agent',    tagClass: 'tag-accent' },
-  { time: '8m ago',  icon: '⚡', text: 'Tavily web search executed — 12 results',      tag: 'Skill',    tagClass: 'tag-blue' },
-  { time: '15m ago', icon: '👤', text: 'Sarah K. joined the organization',             tag: 'Org',      tagClass: 'tag-violet' },
-  { time: '1h ago',  icon: '◫', text: 'Memory vault compacted — 340 entries pruned',  tag: 'Memory',   tagClass: 'tag-gray' },
-  { time: '2h ago',  icon: '⟐', text: 'Legal Intake pipeline deployed',               tag: 'Workflow', tagClass: 'tag-green' },
-  { time: '3h ago',  icon: '⚙', text: 'DeepSeek R1 model route updated',              tag: 'Config',   tagClass: 'tag-gray' },
-];
-
-const QUICK_ACTIONS = [
-  { label: 'New Agent',      icon: '◎', color: '#00E6A8' },
-  { label: 'Run Workflow',   icon: '⟐', color: '#3B82F6' },
-  { label: 'Add Member',     icon: '👤', color: '#8B5CF6' },
-  { label: 'Install Skill',  icon: '⚡', color: '#F59E0B' },
-];
-
-const AGENTS_STATUS = [
-  { name: 'Orchestrator', model: 'claude-sonnet-4-6', status: 'active',  load: 34, cost: '$0.21' },
-  { name: 'LawAssist',    model: 'gemini-flash-3',    status: 'active',  load: 12, cost: '$0.04' },
-  { name: 'DataAgent',    model: 'deepseek-r1-0528',  status: 'busy',    load: 67, cost: '$0.09' },
-];
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div className="glass-card animate-fade-up" style={{ padding: '18px 20px', ...style }}>
+    <div
+      style={{
+        background: 'var(--surface)',
+        border: '1px solid var(--border)',
+        borderRadius: 10,
+        ...style,
+      }}
+    >
       {children}
     </div>
   );
@@ -39,195 +34,390 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
 
 function CardHeader({ title, action }: { title: string; action?: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{title}</span>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px 12px', borderBottom: '1px solid var(--border)' }}>
+      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{title}</span>
       {action}
     </div>
   );
 }
 
-export default function Dashboard({ onNav }: { onNav: (id: string) => void }) {
+function StatusDot({ status }: { status: 'online' | 'busy' | 'offline' }) {
+  const color = status === 'online' ? 'var(--status-green)' : status === 'busy' ? 'var(--status-amber)' : 'var(--text-muted)';
+  return <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, display: 'inline-block', flexShrink: 0 }} />;
+}
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+
+interface AgentRow { name: string; role: string; status: 'online' | 'busy' | 'offline'; initials: string; }
+interface TaskRow  { id: string; title: string; status: string; priority: string; created_at?: number; }
+interface ProposalRow { id: string; title: string; status: string; vote_yes?: number; vote_no?: number; created_at?: number; }
+
+interface DashboardProps {
+  onNav?: (id: string) => void;
+}
+
+export default function Dashboard({ onNav }: DashboardProps) {
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+
+  const [agents,    setAgents]    = useState<AgentRow[]>([]);
+  const [tasks,     setTasks]     = useState<TaskRow[]>([]);
+  const [proposals, setProposals] = useState<ProposalRow[]>([]);
+
+  useEffect(() => {
+    agentsApi.list().then((data: any) => {
+      const entries = Array.isArray(data) ? data : Object.values(data);
+      setAgents(entries.map((a: any) => ({
+        name: a.name || a.id,
+        role: a.description || a.role || 'AI Agent',
+        status: (a.status === 'online' ? 'online' : a.status === 'busy' ? 'busy' : 'offline') as 'online' | 'busy' | 'offline',
+        initials: (a.name || a.id || '?').slice(0, 2).toUpperCase(),
+      })));
+    }).catch(() => {});
+
+    orgTasksApi.list().then((data: any) => {
+      setTasks(Array.isArray(data) ? data : []);
+    }).catch(() => {});
+
+    memSvc.approvals('open').then((data: any) => {
+      setProposals(Array.isArray(data) ? data : []);
+    }).catch(() => {
+      // fallback: try proposals endpoint directly
+      fetch(`${(window as any).__API_BASE__ || ''}`, { headers: { Authorization: `Bearer ${(window as any).__OPENCLAW_TOKEN || ''}` } }).catch(() => {});
+    });
+  }, []);
+
+  const openTasks      = tasks.filter(t => !['completed', 'done'].includes(t.status));
+  const openProposals  = proposals.filter(p => p.status === 'open' || p.status === 'voting');
+  const pendingVotes   = openProposals.length;
+  const inProgressTask = tasks.filter(t => t.status === 'in_progress').length;
+
+  const EXECUTIVE_BRIEF = [
+    ...(pendingVotes > 0 ? [{ icon: Vote, text: `${pendingVotes} proposal${pendingVotes > 1 ? 's' : ''} awaiting your vote`, sub: 'Review and cast your vote in Proposals' }] : []),
+    ...(inProgressTask > 0 ? [{ icon: CheckSquare, text: `${inProgressTask} task${inProgressTask > 1 ? 's' : ''} currently in progress`, sub: 'Check the Task Board for updates' }] : []),
+    ...(agents.filter(a => a.status === 'online').length > 0 ? [{ icon: Bot, text: `${agents.filter(a => a.status === 'online').length} agents online and active`, sub: 'All systems operating normally' }] : []),
+    ...(openTasks.length > 0 ? [{ icon: AlertTriangle, text: `${openTasks.length} open task${openTasks.length > 1 ? 's' : ''} across all stages`, sub: 'Review backlog and prioritize' }] : []),
+    { icon: Building2, text: 'Avraxe AI org is active', sub: 'Organization running smoothly' },
+  ].slice(0, 5);
+
+  const PRIORITIES = [
+    { id: 'proposals', label: 'Review Votes',  sub: pendingVotes > 0 ? `${pendingVotes} pending` : 'No pending', icon: Vote,          color: 'var(--accent)' },
+    { id: 'security',  label: 'Security',       sub: '1 alert',                                                    icon: Shield,         color: 'var(--status-amber)' },
+    { id: 'org',       label: 'Organization',   sub: `${agents.length} members`,                                   icon: Building2,      color: 'var(--status-blue)' },
+    { id: 'chat',      label: 'AI Chat',        sub: 'Ask anything',                                               icon: MessageSquare,  color: 'var(--status-violet)' },
+  ];
+
+  const ACTIVITY = [
+    ...proposals.slice(0, 2).map(p => ({
+      time: p.created_at ? timeAgo(p.created_at) : 'Recently',
+      icon: Vote,
+      text: `Proposal: ${p.title}`,
+      actor: `Status: ${p.status}`,
+    })),
+    ...tasks.slice(0, 2).map(t => ({
+      time: t.created_at ? timeAgo(t.created_at) : 'Recently',
+      icon: CheckSquare,
+      text: `Task: ${t.title}`,
+      actor: `${t.status} · ${t.priority}`,
+    })),
+  ].slice(0, 4);
+
+  const NOTIFICATIONS = [
+    { count: pendingVotes,      label: 'Pending Votes' },
+    { count: openTasks.length,  label: 'Open Tasks' },
+    { count: agents.filter(a => a.status === 'online').length, label: 'Agents Online' },
+  ];
+
+  const REMINDERS = openTasks.slice(0, 4).map(t => ({
+    text: t.title,
+    due: t.priority === 'critical' || t.priority === 'high' ? 'High priority' : 'Normal priority',
+    urgent: t.priority === 'critical' || t.priority === 'high',
+  }));
+
   return (
-    <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 20, height: '100%', overflowY: 'auto' }}>
+    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+      {/* Main content */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      {/* Greeting */}
-      <div className="animate-fade-up" style={{ animationDelay: '0ms' }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.5px' }}>
-          Good morning, Rusty 👋
-        </h1>
-        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 3 }}>
-          Your 3 agents are active · $0.34 spent today · System healthy
-        </p>
-      </div>
-
-      {/* KPI Cards */}
-      <div className="stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-        {KPI.map(k => (
-          <div key={k.label} className="glass-card animate-fade-up" style={{ padding: '16px 18px', position: 'relative', overflow: 'hidden' }}>
-            {/* Accent bar */}
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${k.color}, transparent)`, borderRadius: '16px 16px 0 0' }} />
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{k.label}</div>
-              <div style={{ fontSize: 18, opacity: 0.7 }}>{k.icon}</div>
-            </div>
-            <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-1px', lineHeight: 1 }}>{k.val}</div>
-            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ fontSize: 11, color: k.good ? 'var(--status-green)' : 'var(--status-red)', fontWeight: 600 }}>{k.delta}</span>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>vs yesterday</span>
-            </div>
+        {/* Greeting */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Sun size={22} style={{ color: 'var(--status-amber)', flexShrink: 0 }} />
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+              {greeting}, Rusty
+            </h1>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
+              Here's what's happening in{' '}
+              <span style={{ color: 'var(--accent-dark)', fontWeight: 500 }}>Avraxe AI</span>{' '}
+              today ↓
+            </p>
           </div>
-        ))}
-      </div>
+        </div>
 
-      {/* Main grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16 }}>
-
-        {/* Left column */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-          {/* Agent Status */}
-          <Card>
-            <CardHeader title="Agent Status" action={
-              <button onClick={() => onNav('agents')} style={{ fontSize: 11, color: 'var(--accent-dark)', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}>View all →</button>
-            } />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {AGENTS_STATUS.map(a => (
-                <div key={a.name} style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '10px 12px', borderRadius: 10,
-                  background: 'rgba(255,255,255,0.5)',
-                  border: '1px solid rgba(0,0,0,0.05)',
-                }}>
-                  <span className={`status-dot ${a.status === 'busy' ? 'busy' : 'online'}`} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{a.name}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'DM Mono, monospace' }}>{a.model}</div>
-                  </div>
-                  {/* Load bar */}
-                  <div style={{ width: 80 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                      <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Context</span>
-                      <span style={{ fontSize: 10, color: a.load > 60 ? 'var(--status-amber)' : 'var(--status-green)', fontWeight: 600 }}>{a.load}%</span>
-                    </div>
-                    <div style={{ height: 4, background: 'rgba(0,0,0,0.07)', borderRadius: 99, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${a.load}%`, background: a.load > 60 ? 'var(--status-amber)' : 'var(--accent)', borderRadius: 99, transition: 'width 0.6s' }} />
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', fontFamily: 'DM Mono, monospace', minWidth: 36, textAlign: 'right' }}>{a.cost}</div>
-                  <span className={`tag ${a.status === 'busy' ? 'tag-amber' : 'tag-green'}`}>{a.status}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          {/* Quick Actions */}
-          <Card>
-            <CardHeader title="Quick Actions" />
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-              {QUICK_ACTIONS.map(qa => (
-                <button key={qa.label} style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
-                  padding: '14px 10px', borderRadius: 12,
-                  background: 'rgba(255,255,255,0.5)',
-                  border: '1px solid rgba(0,0,0,0.06)',
-                  cursor: 'pointer', transition: 'all 0.15s',
-                  fontFamily: "'Outfit', sans-serif",
+        {/* Executive Brief */}
+        <Card>
+          <CardHeader
+            title="Executive Brief"
+            action={
+              <button
+                onClick={() => onNav?.('proposals')}
+                style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--accent-dark)', background: 'none', border: 'none', cursor: 'pointer' }}
+              >
+                View all <ArrowRight size={12} />
+              </button>
+            }
+          />
+          <div style={{ padding: '8px 0' }}>
+            {EXECUTIVE_BRIEF.map((item, i) => (
+              <div
+                key={i}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  padding: '10px 20px',
+                  borderBottom: i < EXECUTIVE_BRIEF.length - 1 ? '1px solid var(--border)' : 'none',
+                  cursor: 'pointer',
+                  transition: 'background 0.1s',
                 }}
-                  onMouseEnter={e => {
-                    (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.8)';
-                    (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)';
-                    (e.currentTarget as HTMLElement).style.boxShadow = '0 6px 20px rgba(0,0,0,0.08)';
-                  }}
-                  onMouseLeave={e => {
-                    (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.5)';
-                    (e.currentTarget as HTMLElement).style.transform = '';
-                    (e.currentTarget as HTMLElement).style.boxShadow = '';
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-raise)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <item.icon size={14} style={{ color: 'var(--accent-dark)', marginTop: 1, flexShrink: 0 }} />
+                  <item.icon size={14} style={{ color: 'var(--accent-mid)', flexShrink: 0, opacity: 0.5 }} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>{item.text}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>{item.sub}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Today's Priorities */}
+        <div>
+          <h2 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 10 }}>Today's Priorities</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+            {PRIORITIES.map(p => (
+              <button
+                key={p.id}
+                onClick={() => onNav?.(p.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '14px 16px',
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'background 0.12s, border-color 0.12s',
+                }}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLElement).style.background = 'var(--surface-raise)';
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-hover)';
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLElement).style.background = 'var(--surface)';
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)';
+                }}
+              >
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    background: `${p.color}18`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
                   }}
                 >
-                  <div style={{
-                    width: 36, height: 36, borderRadius: 10,
-                    background: `${qa.color}18`,
-                    border: `1px solid ${qa.color}30`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 16,
-                  }}>{qa.icon}</div>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>{qa.label}</span>
-                </button>
-              ))}
-            </div>
-          </Card>
-
-          {/* Cost chart sparkline */}
-          <Card>
-            <CardHeader title="7-Day Cost Trend" action={<span style={{ fontSize: 11, color: 'var(--status-green)', fontWeight: 600 }}>↓ 8% this week</span>} />
-            <svg width="100%" height="70" viewBox="0 0 400 70" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="costGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#00E6A8" stopOpacity="0.2" />
-                  <stop offset="100%" stopColor="#00E6A8" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              <path d="M0,52 C30,48 60,54 90,42 C120,30 150,38 180,34 C210,30 240,22 270,26 C300,30 330,18 360,14 C380,12 390,10 400,8" fill="none" stroke="#00E6A8" strokeWidth="2.5" strokeLinecap="round" />
-              <path d="M0,52 C30,48 60,54 90,42 C120,30 150,38 180,34 C210,30 240,22 270,26 C300,30 330,18 360,14 C380,12 390,10 400,8 L400,70 L0,70Z" fill="url(#costGrad)" />
-            </svg>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-              {['Mon','Tue','Wed','Thu','Fri','Sat','Today'].map(d => (
-                <span key={d} style={{ fontSize: 10, color: 'var(--text-muted)' }}>{d}</span>
-              ))}
-            </div>
-          </Card>
-        </div>
-
-        {/* Right column - Activity Feed */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <Card style={{ flex: 1 }}>
-            <CardHeader title="Activity Feed" action={
-              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Live</span>
-            } />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {ACTIVITY.map((a, i) => (
-                <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                  <div style={{
-                    width: 28, height: 28, borderRadius: 8,
-                    background: 'rgba(0,0,0,0.04)', border: '1px solid rgba(0,0,0,0.06)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 12, flexShrink: 0,
-                  }}>{a.icon}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, color: 'var(--text-primary)', lineHeight: 1.4, fontWeight: 500 }}>{a.text}</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                      <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{a.time}</span>
-                      <span className={`tag ${a.tagClass}`}>{a.tag}</span>
-                    </div>
-                  </div>
+                  <p.icon size={15} style={{ color: p.color }} />
                 </div>
-              ))}
-            </div>
-          </Card>
-
-          {/* AI Summary */}
-          <Card>
-            <CardHeader title="AI Summary" />
-            <div style={{
-              background: 'linear-gradient(135deg, rgba(0,230,168,0.06), rgba(59,130,246,0.04))',
-              border: '1px solid rgba(0,230,168,0.15)',
-              borderRadius: 10, padding: '12px 14px',
-            }}>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <div style={{
-                  width: 22, height: 22, borderRadius: 6,
-                  background: 'linear-gradient(135deg, #00E6A8, #3B82F6)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0,
-                }}>◎</div>
-                <span style={{ fontSize: 11, color: 'var(--accent-dark)', fontWeight: 700 }}>Orchestrator · 2 min ago</span>
-              </div>
-              <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                System running smoothly. DataAgent context at 67% — recommend compacting before the scheduled cron at 03:00. Two beta attorneys pending follow-up.
-              </p>
-            </div>
-          </Card>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{p.label}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{p.sub}</div>
+                </div>
+                <ChevronRight size={14} style={{ color: 'var(--text-muted)', marginLeft: 'auto' }} />
+              </button>
+            ))}
+          </div>
         </div>
+
+        {/* Recent Activity */}
+        <Card>
+          <CardHeader
+            title="Recent Activity"
+            action={
+              <button style={{ fontSize: 12, color: 'var(--accent-dark)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                View all activity <ArrowRight size={12} />
+              </button>
+            }
+          />
+          <div>
+            {ACTIVITY.map((a, i) => (
+              <div
+                key={i}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '11px 20px',
+                  borderBottom: i < ACTIVITY.length - 1 ? '1px solid var(--border)' : 'none',
+                }}
+              >
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 72, flexShrink: 0 }}>{a.time}</span>
+                <div
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 6,
+                    background: 'var(--surface-raise)',
+                    border: '1px solid var(--border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <a.icon size={13} style={{ color: 'var(--text-secondary)' }} />
+                </div>
+                <span style={{ flex: 1, fontSize: 13, color: 'var(--text-primary)' }}>{a.text}</span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{a.actor}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      {/* Right sidebar */}
+      <div
+        style={{
+          width: 280,
+          flexShrink: 0,
+          borderLeft: '1px solid var(--border)',
+          overflowY: 'auto',
+          padding: 16,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 14,
+          background: 'var(--canvas)',
+        }}
+      >
+        {/* Reminders */}
+        <Card>
+          <CardHeader
+            title="Reminders"
+            action={
+              <button style={{ width: 24, height: 24, borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                <Plus size={13} />
+              </button>
+            }
+          />
+          <div style={{ padding: '4px 0' }}>
+            {REMINDERS.map((r, i) => (
+              <div
+                key={i}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '9px 16px',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-raise)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ width: 14, height: 14, borderRadius: 3, border: `1px solid ${r.urgent ? 'var(--status-amber)' : 'var(--border-hover)'}`, flexShrink: 0 }} />
+                <span style={{ flex: 1, fontSize: 12, color: 'var(--text-primary)' }}>{r.text}</span>
+                <span style={{ fontSize: 11, color: r.urgent ? 'var(--status-amber)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>{r.due}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Active Agents */}
+        <Card>
+          <CardHeader
+            title="Active Agents"
+            action={
+              <button onClick={() => onNav?.('agents')} style={{ fontSize: 12, color: 'var(--accent-dark)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                View all
+              </button>
+            }
+          />
+          <div style={{ padding: '4px 0' }}>
+            {agents.map((a, i) => (
+              <div
+                key={i}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', cursor: 'pointer' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-raise)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--surface-raise)', border: '1px solid var(--border-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', flexShrink: 0 }}>
+                  {a.initials}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>{a.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{a.role}</div>
+                </div>
+                <StatusDot status={a.status as 'online' | 'busy'} />
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Notifications */}
+        <Card>
+          <CardHeader
+            title="Notifications"
+            action={
+              <button style={{ fontSize: 12, color: 'var(--accent-dark)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                View all
+              </button>
+            }
+          />
+          <div style={{ padding: '4px 0' }}>
+            {NOTIFICATIONS.map((n, i) => (
+              <div
+                key={i}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 16px', cursor: 'pointer' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-raise)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{n.label}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{n.count}</span>
+                  <ChevronRight size={13} style={{ color: 'var(--text-muted)' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Organizations */}
+        <Card>
+          <CardHeader title="Organizations" />
+          <div style={{ padding: '8px 16px 12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 30, height: 30, borderRadius: 7, background: 'var(--accent-soft)', border: '1px solid var(--accent-mid)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: 'var(--accent-dark)' }}>
+                A
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>Avraxe AI</div>
+              </div>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--status-green)', fontWeight: 500 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--status-green)', display: 'inline-block' }} />
+                Active
+              </span>
+            </div>
+          </div>
+        </Card>
       </div>
     </div>
   );

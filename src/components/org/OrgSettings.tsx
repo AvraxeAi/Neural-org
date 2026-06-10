@@ -44,7 +44,7 @@ export function OrgSettings() {
         <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 16, letterSpacing: '-0.2px' }}>Member Permissions</div>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+            <tr style={{ borderBottom: '1px solid var(--border)' }}>
               {['Permission','Owner','Admin','Member','Guest'].map(h => (
                 <th key={h} style={{ padding: '8px 12px', textAlign: h === 'Permission' ? 'left' : 'center', fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{h}</th>
               ))}
@@ -59,7 +59,7 @@ export function OrgSettings() {
               ['Vote on decisions',true,  true,  true,  false],
               ['Access CRM',       true,  true,  false, false],
             ].map(([perm, ...vals], i) => (
-              <tr key={i} style={{ borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
+              <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
                 <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-secondary)' }}>{perm}</td>
                 {vals.map((v, j) => (
                   <td key={j} style={{ padding: '10px 12px', textAlign: 'center', fontSize: 14 }}>
@@ -91,7 +91,7 @@ export function OrgSettings() {
 }
 
 const inputStyle: React.CSSProperties = {
-  width: '100%', background: 'rgba(255,255,255,0.7)', border: '1px solid rgba(0,0,0,0.08)',
+  width: '100%', background: 'var(--surface-raise)', border: '1px solid var(--border)',
   borderRadius: 9, padding: '9px 13px', fontSize: 13, color: 'var(--text-primary)',
   fontFamily: "'Outfit',sans-serif", transition: 'border-color 0.15s',
 };
@@ -123,7 +123,7 @@ function Toggle({ label, desc, value, onChange }: { label: string; desc: string;
       >
         <div style={{
           position: 'absolute', top: 3, left: value ? 23 : 3,
-          width: 18, height: 18, borderRadius: '50%', background: 'white',
+          width: 18, height: 18, borderRadius: '50%', background: 'var(--text-primary)',
           transition: 'left 0.2s', boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
         }} />
       </button>

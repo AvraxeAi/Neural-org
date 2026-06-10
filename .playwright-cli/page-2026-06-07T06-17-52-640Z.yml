@@ -1,0 +1,233 @@
+- generic [ref=e553]:
+  - complementary [ref=e554]:
+    - generic [ref=e555]:
+      - generic [ref=e556]: O
+      - generic [ref=e557]:
+        - strong [ref=e558]: OpenClaw
+        - generic [ref=e559]: Command Center
+      - button "Collapse sidebar" [ref=e560] [cursor=pointer]:
+        - img [ref=e561]
+    - navigation [ref=e564]:
+      - button "Home" [ref=e565] [cursor=pointer]:
+        - img [ref=e566]
+        - generic [ref=e569]: Home
+      - button "AI Chat" [ref=e570] [cursor=pointer]:
+        - img [ref=e571]
+        - generic [ref=e573]: AI Chat
+      - button "Organization" [ref=e574] [cursor=pointer]:
+        - img [ref=e575]
+        - generic [ref=e579]: Organization
+      - button "Proposals" [ref=e580] [cursor=pointer]:
+        - img [ref=e581]
+        - generic [ref=e584]: Proposals
+      - button "Boards" [ref=e585] [cursor=pointer]:
+        - img [ref=e586]
+        - generic [ref=e591]: Boards
+      - button "Tasks" [ref=e592] [cursor=pointer]:
+        - img [ref=e593]
+        - generic [ref=e596]: Tasks
+      - button "Workflows" [ref=e597] [cursor=pointer]:
+        - img [ref=e598]
+        - generic [ref=e602]: Workflows
+      - button "Security" [ref=e603] [cursor=pointer]:
+        - img [ref=e604]
+        - generic [ref=e606]: Security
+      - button "Memory" [ref=e607] [cursor=pointer]:
+        - img [ref=e608]
+        - generic [ref=e618]: Memory
+      - button "Integrations" [ref=e619] [cursor=pointer]:
+        - img [ref=e620]
+        - generic [ref=e622]: Integrations
+      - button "Settings" [ref=e623] [cursor=pointer]:
+        - img [ref=e624]
+        - generic [ref=e627]: Settings
+    - button "RK Rusty Khan Administrator" [ref=e628] [cursor=pointer]:
+      - generic [ref=e629]: RK
+      - generic [ref=e630]:
+        - strong [ref=e631]: Rusty Khan
+        - generic [ref=e632]: Administrator
+  - generic [ref=e633]:
+    - banner [ref=e634]:
+      - generic [ref=e635]:
+        - generic [ref=e636]:
+          - img [ref=e637]
+          - textbox "Search anything" [ref=e640]:
+            - /placeholder: Search anything...
+          - generic [ref=e641]: ⌘ K
+        - button "Notifications" [ref=e642] [cursor=pointer]:
+          - img [ref=e643]
+        - button "RK" [ref=e647] [cursor=pointer]
+    - main [ref=e648]:
+      - generic [ref=e650]:
+        - generic [ref=e651]:
+          - generic [ref=e652]:
+            - img [ref=e653]
+            - generic [ref=e659]:
+              - heading "Good morning, Rusty" [level=1] [ref=e660]
+              - paragraph [ref=e661]: Here's what's happening in Avraxe AI today ↓
+          - generic [ref=e662]:
+            - generic [ref=e663]:
+              - generic [ref=e664]: Executive Brief
+              - button "View all" [ref=e665] [cursor=pointer]:
+                - text: View all
+                - img [ref=e666]
+            - generic [ref=e668]:
+              - generic [ref=e669] [cursor=pointer]:
+                - generic [ref=e670]:
+                  - img [ref=e671]
+                  - img [ref=e674]
+                - generic [ref=e677]:
+                  - generic [ref=e678]: 3 proposals are awaiting your vote
+                  - generic [ref=e679]: Voting closes in the next 24 hours
+              - generic [ref=e680] [cursor=pointer]:
+                - generic [ref=e681]:
+                  - img [ref=e682]
+                  - img [ref=e684]
+                - generic [ref=e686]:
+                  - generic [ref=e687]: Security audit "Infrastructure Access" closes tomorrow
+                  - generic [ref=e688]: Review findings and approve remediation plan
+              - generic [ref=e689] [cursor=pointer]:
+                - generic [ref=e690]:
+                  - img [ref=e691]
+                  - img [ref=e694]
+                - generic [ref=e697]:
+                  - generic [ref=e698]: Hermes identified 2 workflow bottlenecks
+                  - generic [ref=e699]: Recommendations ready for review
+              - generic [ref=e700] [cursor=pointer]:
+                - generic [ref=e701]:
+                  - img [ref=e702]
+                  - img [ref=e705]
+                - generic [ref=e708]:
+                  - generic [ref=e709]: New organization member request from Alex Morgan
+                  - generic [ref=e710]: Requires approval
+              - generic [ref=e711] [cursor=pointer]:
+                - generic [ref=e712]:
+                  - img [ref=e713]
+                  - img [ref=e715]
+                - generic [ref=e717]:
+                  - generic [ref=e718]: Claude submitted a board recommendation
+                  - generic [ref=e719]: Review recommendation on Q2 budget allocation
+          - generic [ref=e720]:
+            - heading "Today's Priorities" [level=2] [ref=e721]
+            - generic [ref=e722]:
+              - button "Review Votes 3 pending" [ref=e723] [cursor=pointer]:
+                - img [ref=e725]
+                - generic [ref=e728]:
+                  - generic [ref=e729]: Review Votes
+                  - generic [ref=e730]: 3 pending
+                - img [ref=e731]
+              - button "Security 1 alert" [ref=e733] [cursor=pointer]:
+                - img [ref=e735]
+                - generic [ref=e737]:
+                  - generic [ref=e738]: Security
+                  - generic [ref=e739]: 1 alert
+                - img [ref=e740]
+              - button "Organization 1 pending" [ref=e742] [cursor=pointer]:
+                - img [ref=e744]
+                - generic [ref=e748]:
+                  - generic [ref=e749]: Organization
+                  - generic [ref=e750]: 1 pending
+                - img [ref=e751]
+              - button "AI Chat Ask anything" [ref=e753] [cursor=pointer]:
+                - img [ref=e755]
+                - generic [ref=e757]:
+                  - generic [ref=e758]: AI Chat
+                  - generic [ref=e759]: Ask anything
+                - img [ref=e760]
+          - generic [ref=e762]:
+            - generic [ref=e763]:
+              - generic [ref=e764]: Recent Activity
+              - button "View all activity" [ref=e765] [cursor=pointer]:
+                - text: View all activity
+                - img [ref=e766]
+            - generic [ref=e768]:
+              - generic [ref=e769]:
+                - generic [ref=e770]: 10:24 AM
+                - img [ref=e772]
+                - generic [ref=e775]: Board approved Hiring Proposal
+                - generic [ref=e776]: By Ayesha Khan
+              - generic [ref=e777]:
+                - generic [ref=e778]: 09:42 AM
+                - img [ref=e780]
+                - generic [ref=e783]: Codex completed workflow review
+                - generic [ref=e784]: By Codex Agent
+              - generic [ref=e785]:
+                - generic [ref=e786]: 08:11 AM
+                - img [ref=e788]
+                - generic [ref=e790]: Security policy updated
+                - generic [ref=e791]: By Hermes-7
+              - generic [ref=e792]:
+                - generic [ref=e793]: Yesterday
+                - img [ref=e795]
+                - generic [ref=e798]: New member Alex Morgan joined
+                - generic [ref=e799]: By System
+        - generic [ref=e800]:
+          - generic [ref=e801]:
+            - generic [ref=e802]:
+              - generic [ref=e803]: Reminders
+              - button [ref=e804] [cursor=pointer]:
+                - img [ref=e805]
+            - generic [ref=e806]:
+              - generic [ref=e807] [cursor=pointer]:
+                - generic [ref=e809]: "Review proposal #42"
+                - generic [ref=e810]: Due in 6 hours
+              - generic [ref=e811] [cursor=pointer]:
+                - generic [ref=e813]: Approve new member
+                - generic [ref=e814]: Due today
+              - generic [ref=e815] [cursor=pointer]:
+                - generic [ref=e817]: Review security findings
+                - generic [ref=e818]: Due tomorrow
+              - generic [ref=e819] [cursor=pointer]:
+                - generic [ref=e821]: Update onboarding workflow
+                - generic [ref=e822]: Due this week
+          - generic [ref=e823]:
+            - generic [ref=e824]:
+              - generic [ref=e825]: Active Agents
+              - button "View all" [ref=e826] [cursor=pointer]
+            - generic [ref=e827]:
+              - generic [ref=e828] [cursor=pointer]:
+                - generic [ref=e829]: H7
+                - generic [ref=e830]:
+                  - generic [ref=e831]: Hermes-7
+                  - generic [ref=e832]: Security Analyst
+              - generic [ref=e834] [cursor=pointer]:
+                - generic [ref=e835]: C3
+                - generic [ref=e836]:
+                  - generic [ref=e837]: Claude-3.5
+                  - generic [ref=e838]: Strategy Advisor
+              - generic [ref=e840] [cursor=pointer]:
+                - generic [ref=e841]: CX
+                - generic [ref=e842]:
+                  - generic [ref=e843]: Codex
+                  - generic [ref=e844]: Workflow Engineer
+              - generic [ref=e846] [cursor=pointer]:
+                - generic [ref=e847]: OC
+                - generic [ref=e848]:
+                  - generic [ref=e849]: OpenClaw
+                  - generic [ref=e850]: Operations Manager
+          - generic [ref=e852]:
+            - generic [ref=e853]:
+              - generic [ref=e854]: Notifications
+              - button "View all" [ref=e855] [cursor=pointer]
+            - generic [ref=e856]:
+              - generic [ref=e857] [cursor=pointer]:
+                - generic [ref=e858]: Pending Votes
+                - generic [ref=e859]:
+                  - generic [ref=e860]: "3"
+                  - img [ref=e861]
+              - generic [ref=e863] [cursor=pointer]:
+                - generic [ref=e864]: Mentions
+                - generic [ref=e865]:
+                  - generic [ref=e866]: "2"
+                  - img [ref=e867]
+              - generic [ref=e869] [cursor=pointer]:
+                - generic [ref=e870]: Security Alert
+                - generic [ref=e871]:
+                  - generic [ref=e872]: "1"
+                  - img [ref=e873]
+          - generic [ref=e875]:
+            - generic [ref=e877]: Organizations
+            - generic [ref=e879]:
+              - generic [ref=e880]: A
+              - generic [ref=e882]: Avraxe AI
+              - generic [ref=e883]: Active

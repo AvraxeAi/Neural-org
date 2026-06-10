@@ -29,7 +29,7 @@ export function OrgActivity() {
       {/* Filter row */}
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
         {TYPE_FILTERS.map(f => (
-          <button key={f} onClick={() => setTypeFilter(f)} style={{ padding: '5px 12px', borderRadius: 8, background: typeFilter === f ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: typeFilter === f ? 700 : 500, color: typeFilter === f ? 'var(--text-primary)' : 'var(--text-muted)', cursor: 'pointer', fontFamily: "'Outfit',sans-serif", border: '1px solid rgba(0,0,0,0.07)', boxShadow: typeFilter === f ? '0 2px 6px rgba(0,0,0,0.08)' : 'none', transition: 'all 0.15s' } as any}>{f}</button>
+          <button key={f} onClick={() => setTypeFilter(f)} style={{ padding: '5px 12px', borderRadius: 8, background: typeFilter === f ? 'var(--surface-hover)' : 'transparent', color: typeFilter === f ? 'var(--text-primary)' : 'var(--text-muted)', cursor: 'pointer', fontFamily: "'Outfit',sans-serif", border: '1px solid var(--border)', boxShadow: 'none', transition: 'all 0.15s' } as any}>{f}</button>
         ))}
       </div>
 
@@ -38,13 +38,13 @@ export function OrgActivity() {
         {filtered.map((item, i) => (
           <div key={i} style={{
             display: 'flex', gap: 12, padding: '12px 18px',
-            borderBottom: i < filtered.length - 1 ? '1px solid rgba(0,0,0,0.04)' : 'none',
+            borderBottom: i < filtered.length - 1 ? '1px solid var(--border)' : 'none',
             transition: 'background 0.12s', cursor: 'default',
           }}
             onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.015)')}
             onMouseLeave={e => (e.currentTarget.style.background = '')}
           >
-            <div style={{ width: 32, height: 32, borderRadius: 9, background: 'rgba(0,0,0,0.04)', border: '1px solid rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{item.icon}</div>
+            <div style={{ width: 32, height: 32, borderRadius: 9, background: 'var(--border)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{item.icon}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, lineHeight: 1.4 }}>
                 <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{item.actor}</span>
@@ -102,9 +102,9 @@ export function OrgCRM() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
         {/* Toolbar */}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <div style={{ display: 'flex', background: 'rgba(255,255,255,0.5)', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 8, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', background: 'var(--surface-raise)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
             {(['cards','pipeline'] as const).map(v => (
-              <button key={v} onClick={() => setView(v)} style={{ padding: '7px 14px', background: view === v ? 'rgba(255,255,255,0.9)' : 'transparent', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: view === v ? 700 : 500, color: view === v ? 'var(--text-primary)' : 'var(--text-muted)', fontFamily: "'Outfit',sans-serif" }}>
+              <button key={v} onClick={() => setView(v)} style={{ padding: '7px 14px', background: view === v ? 'var(--surface-hover)' : 'transparent', color: view === v ? 'var(--text-primary)' : 'var(--text-muted)', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: view === v ? 700 : 500, fontFamily: "'Outfit',sans-serif" }}>
                 {v === 'cards' ? '⊞ Cards' : '→ Pipeline'}
               </button>
             ))}
@@ -117,7 +117,7 @@ export function OrgCRM() {
             {CONTACTS.map(c => (
               <div key={c.id} className="glass-card" onClick={() => setSelected(selected?.id === c.id ? null : c)} style={{ padding: '16px 20px', cursor: 'pointer', transition: 'all 0.18s', borderColor: selected?.id === c.id ? 'rgba(0,230,168,0.35)' : undefined, background: selected?.id === c.id ? 'rgba(0,230,168,0.04)' : undefined }}>
                 <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-                  <div style={{ width: 42, height: 42, borderRadius: 12, background: 'rgba(0,0,0,0.05)', border: '1px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, color: 'var(--text-secondary)', flexShrink: 0 }}>
+                  <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--border)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, color: 'var(--text-secondary)', flexShrink: 0 }}>
                     {c.name.charAt(0)}
                   </div>
                   <div style={{ flex: 1 }}>
@@ -151,7 +151,7 @@ export function OrgCRM() {
                 <div key={stage} style={{ minWidth: 200, flexShrink: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                     <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>{stage}</span>
-                    <span style={{ background: 'rgba(0,0,0,0.07)', borderRadius: 99, fontSize: 10, fontWeight: 700, padding: '1px 6px', color: 'var(--text-muted)' }}>{stageContacts.length}</span>
+                    <span style={{ background: 'var(--border)', borderRadius: 99, fontSize: 10, fontWeight: 700, padding: '1px 6px', color: 'var(--text-muted)' }}>{stageContacts.length}</span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {stageContacts.map(c => (
@@ -162,7 +162,7 @@ export function OrgCRM() {
                       </div>
                     ))}
                     {stageContacts.length === 0 && (
-                      <div style={{ border: '1.5px dashed rgba(0,0,0,0.1)', borderRadius: 10, padding: '16px', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>Empty</div>
+                      <div style={{ border: '1.5px dashed var(--border)', borderRadius: 10, padding: '16px', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>Empty</div>
                     )}
                   </div>
                 </div>
@@ -179,7 +179,7 @@ export function OrgCRM() {
             <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Contact</span>
             <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 15, color: 'var(--text-muted)' }}>✕</button>
           </div>
-          <div style={{ width: 50, height: 50, borderRadius: 14, background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 12 }}>{selected.name.charAt(0)}</div>
+          <div style={{ width: 50, height: 50, borderRadius: 14, background: 'var(--border)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 12 }}>{selected.name.charAt(0)}</div>
           <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 3 }}>{selected.name}</div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>{selected.role} · {selected.company}</div>
           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -203,8 +203,8 @@ export function OrgCRM() {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
             <button style={{ background: 'linear-gradient(135deg,#00E6A8,#00C494)', border: 'none', borderRadius: 9, padding: '9px', color: '#fff', fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: 700, cursor: 'pointer', boxShadow: '0 3px 10px rgba(0,230,168,0.3)' }}>◎ Ask AI to Follow Up</button>
-            <button style={{ background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 9, padding: '9px', color: 'var(--text-secondary)', fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>📞 Call via PollyReach</button>
-            <button style={{ background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 9, padding: '9px', color: 'var(--text-secondary)', fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>✏️ Edit Contact</button>
+            <button style={{ background: 'var(--surface-raise)', border: '1px solid var(--border)', borderRadius: 9, padding: '9px', color: 'var(--text-secondary)', fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>📞 Call via PollyReach</button>
+            <button style={{ background: 'var(--surface-raise)', border: '1px solid var(--border)', borderRadius: 9, padding: '9px', color: 'var(--text-secondary)', fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>✏️ Edit Contact</button>
           </div>
         </div>
       )}

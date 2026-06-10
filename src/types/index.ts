@@ -1,3 +1,4 @@
+// ── Core nav ─────────────────────────────────────────────────────────────────
 export type NavItem = {
   id: string;
   label: string;
@@ -6,6 +7,7 @@ export type NavItem = {
   section?: string;
 };
 
+// ── Agent ─────────────────────────────────────────────────────────────────────
 export type Agent = {
   id: string;
   name: string;
@@ -20,6 +22,7 @@ export type Agent = {
   channels: string[];
 };
 
+// ── Org ───────────────────────────────────────────────────────────────────────
 export type OrgMember = {
   id: string;
   name: string;
@@ -47,19 +50,106 @@ export type OrgNode = {
   permissionType: OrgNodePermission;
 };
 
-export type Project = {
+// ── Projects & Workspaces ─────────────────────────────────────────────────────
+export type ProjectStatus = 'active' | 'backlog' | 'review' | 'done' | 'archived';
+export type ProjectVisibility = 'private' | 'org' | 'public';
+
+export type Workspace = {
   id: string;
-  title: string;
-  status: 'active' | 'backlog' | 'review' | 'done';
-  assignee: string;
-  priority: 'high' | 'medium' | 'low';
-  due?: string;
+  name: string;
+  type: 'personal' | 'org';
+  orgId?: string;
+  gradient?: string;
+  initials: string;
 };
 
+export type Project = {
+  id: string;
+  workspaceId: string;
+  name: string;
+  description?: string;
+  status: ProjectStatus;
+  visibility: ProjectVisibility;
+  color?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+// ── Chat & Messages ───────────────────────────────────────────────────────────
+export type ChatMode = 'private' | 'org' | 'ai-only';
+
+export type ChatSession = {
+  id: string;
+  projectId?: string;
+  workspaceId?: string;
+  orgId?: string;
+  title: string;
+  mode: ChatMode;
+  participants: string[];
+  lastMessageAt: string;
+  createdAt: string;
+};
+
+export type MessageRole = 'user' | 'assistant' | 'system';
+export type MessageKind = 'message' | 'proposal' | 'decision' | 'event';
+
+export type Message = {
+  id: string;
+  sessionId: string;
+  role: MessageRole;
+  kind: MessageKind;
+  content: string;
+  authorId?: string;
+  authorName?: string;
+  timestamp: string;
+  metadata?: Record<string, unknown>;
+};
+
+// Legacy alias kept for backward compat
 export type ChatMessage = {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
   agentId?: string;
+};
+
+// ── Memory ────────────────────────────────────────────────────────────────────
+export type MemoryScope = 'chat' | 'project' | 'org' | 'global';
+
+export type MemoryEntry = {
+  id: string;
+  scope: MemoryScope;
+  scopeId: string;
+  title: string;
+  body: string;
+  tags?: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+// ── Board / Proposals ─────────────────────────────────────────────────────────
+export type BoardProposalStatus = 'draft' | 'open' | 'discussion' | 'voting' | 'passed' | 'failed' | 'implemented' | 'tabled';
+export type VoteChoice = 'for' | 'against' | 'abstain';
+export type ProposalCategory = 'policy' | 'budget' | 'personnel' | 'strategy' | 'other';
+
+export type BoardVote = {
+  voterId: string;
+  voterName: string;
+  choice: VoteChoice;
+  reason: string;
+  timestamp: string;
+};
+
+export type BoardProposal = {
+  id: string;
+  title: string;
+  description: string;
+  proposedBy: string;
+  proposedByName: string;
+  category: ProposalCategory;
+  status: BoardProposalStatus;
+  votes: BoardVote[];
+  createdAt: string;
+  closedAt?: string;
 };

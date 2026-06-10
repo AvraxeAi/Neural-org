@@ -1,22 +1,28 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import './styles/globals.css';
+import AppShell from './components/layout/AppShell';
 import Sidebar from './components/layout/Sidebar';
-import Header from './components/layout/Header';
-import Dashboard from './components/dashboard/Dashboard';
+import TopBar from './components/layout/TopBar';
 import Chat from './components/chat/Chat';
-import Organization from './components/org/Organization';
-import Agents from './components/agents/Agents';
-import Capabilities from './components/capabilities/Capabilities';
+import Dashboard from './components/dashboard/Dashboard';
+import OrgFlow from './components/org/OrgFlow';
+import Board from './components/board/Board';
+import Proposals from './components/governance/Proposals';
+import Kanban from './components/kanban/Kanban';
 import { WorkflowsEnhanced } from './components/workflows/WorkflowsEnhanced';
-import { MemoryVaultEnhanced } from './components/memory/MemoryVaultEnhanced';
-import { Documents, Terminal } from './components/pages';
-import { MetricsEnhanced } from './components/metrics/MetricsEnhanced';
+import Agents from './components/agents/Agents';
+import SecurityCenter from './components/security/SecurityCenter';
+import { MemoryDashboard } from './components/memory/MemoryDashboard';
+import Integrations from './components/integrations/Integrations';
 import Settings from './components/settings/Settings';
-import PersonalWorkspace from './components/workspace/PersonalWorkspace';
-import { SearchModal, NotificationsPanel } from './components/ui/SearchAndNotifications';
-import { fetchGatewaySummary, type GatewaySummary } from './lib/api';
 import { ConnectionBanner } from './components/system/ConnectionBanner';
+import { fetchGatewaySummary, type GatewaySummary } from './lib/api';
 import { useAuth } from './context/AuthContext';
+import InviteOnboarding from './components/org/InviteOnboarding';
+
+type Page = 'home' | 'chat' | 'org' | 'proposals' | 'board' | 'tasks' | 'workflows' | 'agents' | 'security' | 'memory' | 'integrations' | 'settings';
+
+const VALID_PAGES: Page[] = ['home', 'chat', 'org', 'proposals', 'board', 'tasks', 'workflows', 'agents', 'security', 'memory', 'integrations', 'settings'];
 
 const FALLBACK_SUMMARY: GatewaySummary = {
   ok: false,
@@ -26,29 +32,23 @@ const FALLBACK_SUMMARY: GatewaySummary = {
 };
 
 export default function App() {
+  const inviteToken = window.location.pathname.match(/^\/join\/([^/]+)$/)?.[1];
+  if (inviteToken) return <InviteOnboarding token={decodeURIComponent(inviteToken)} />;
+  return <CommandCenterApp />;
+}
+
+function CommandCenterApp() {
   const auth = useAuth();
-  const [active, setActive] = useState('dashboard');
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [notifsOpen, setNotifsOpen] = useState(false);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 1100);
+  const [active, setActive] = useState<Page>('board');
   const [summary, setSummary] = useState<GatewaySummary>(FALLBACK_SUMMARY);
 
   useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 1100);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-
-  useEffect(() => {
     let cancelled = false;
-
     const load = async () => {
       const next = await fetchGatewaySummary();
       if (!cancelled) setSummary(next);
     };
-
-    load();
+    void load();
     const interval = window.setInterval(load, 30000);
     return () => {
       cancelled = true;
@@ -56,102 +56,51 @@ export default function App() {
     };
   }, []);
 
-  // Global Cmd+K
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setSearchOpen(s => !s);
-      }
-      if (e.key === 'Escape') {
-        setSearchOpen(false);
-        setNotifsOpen(false);
-        setMobileNavOpen(false);
-      }
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, []);
+  const handleNav = (id: string) => {
+    if (VALID_PAGES.includes(id as Page)) setActive(id as Page);
+  };
 
-  useEffect(() => {
-    if (!isMobile) setMobileNavOpen(false);
-  }, [isMobile]);
+  const userName = auth.user?.displayName || 'Rusty Khan';
+
+  if (active === 'chat') {
+    return (
+      <>
+        {!summary.ok && <ConnectionBanner summary={summary} onConfigure={() => setActive('settings')} />}
+        <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--canvas)' }}>
+          <Chat mode="private" onNavigate={handleNav} />
+        </div>
+      </>
+    );
+  }
 
   const renderPage = () => {
     switch (active) {
-      case 'dashboard':    return <Dashboard onNav={setActive} />;
-      case 'chat':         return <Chat />;
-      case 'personal':     return <PersonalWorkspace />;
-      case 'org':          return <Organization />;
-      case 'agents':       return <Agents />;
+      case 'home':         return <Dashboard onNav={handleNav} />;
+      case 'org':          return <OrgFlow />;
+      case 'proposals':    return <Proposals />;
+      case 'board':        return <Board />;
+      case 'tasks':        return <Kanban />;
       case 'workflows':    return <WorkflowsEnhanced />;
-      case 'capabilities': return <Capabilities />;
-      case 'memory':       return <MemoryVaultEnhanced />;
-      case 'documents':    return <Documents />;
-      case 'metrics':      return <MetricsEnhanced />;
-      case 'terminal':     return <Terminal />;
-      case 'settings':     return <Settings />;
+      case 'agents':       return <Agents />;
+      case 'security':     return <SecurityCenter onNav={handleNav} />;
+      case 'memory':       return <MemoryDashboard />;
+      case 'integrations': return <Integrations />;
+      case 'settings':     return <Settings initialTab="general" />;
       default:             return null;
     }
   };
 
-  const fullHeight = ['chat', 'terminal', 'settings', 'workflows', 'memory'].includes(active);
-  const unreadCount = 3;
-  const page = useMemo(() => renderPage(), [active]);
-
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', position: 'relative', zIndex: 1 }}>
-      {isMobile && mobileNavOpen && (
-        <button
-          aria-label="Close navigation"
-          onClick={() => setMobileNavOpen(false)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(15,17,23,0.36)', border: 'none', zIndex: 15 }}
-        />
-      )}
-
-      <Sidebar
-        active={active}
-        onNav={(id) => {
-          setActive(id);
-          setMobileNavOpen(false);
-        }}
-        summary={summary}
-        currentUserName={auth.user?.displayName || 'Rusty'}
-        mobile={isMobile}
-        mobileOpen={mobileNavOpen}
-      />
-
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-        <Header
-          onNewAgent={() => setActive('agents')}
-          onSearchOpen={() => setSearchOpen(true)}
-          onNotifsToggle={() => setNotifsOpen(n => !n)}
-          onMenuToggle={() => setMobileNavOpen(v => !v)}
-          notifsOpen={notifsOpen}
-          unreadCount={unreadCount}
-          mobile={isMobile}
-          summary={summary}
-          userLabel={auth.isDemoMode ? 'Demo mode' : auth.user?.email || 'Authenticated'}
-        />
-
-        {!summary.ok && <ConnectionBanner summary={summary} />}
-
-        <main style={{ flex: 1, overflow: fullHeight ? 'hidden' : 'auto', position: 'relative' }}>
-          <div key={active} className="animate-fade-up" style={{ height: '100%' }}>
-            {page}
-          </div>
-        </main>
-      </div>
-
-      <SearchModal
-        open={searchOpen}
-        onClose={() => setSearchOpen(false)}
-        onNav={(id) => { setActive(id); setSearchOpen(false); setMobileNavOpen(false); }}
-      />
-      <NotificationsPanel
-        open={notifsOpen}
-        onClose={() => setNotifsOpen(false)}
-      />
-    </div>
+    <>
+      {!summary.ok && <ConnectionBanner summary={summary} onConfigure={() => setActive('settings')} />}
+      <AppShell
+        sidebar={<Sidebar active={active} onNav={handleNav} currentUserName={userName} />}
+        topBar={<TopBar onNav={handleNav} currentUserName={userName} />}
+      >
+        <div key={active} style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          {renderPage()}
+        </div>
+      </AppShell>
+    </>
   );
 }

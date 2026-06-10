@@ -1,0 +1,201 @@
+- generic [ref=e8]:
+  - complementary [ref=e9]:
+    - generic [ref=e10]:
+      - generic [ref=e11]: O
+      - generic [ref=e12]:
+        - strong [ref=e13]: OpenClaw
+        - generic [ref=e14]: Command Center
+      - button "Collapse sidebar" [ref=e15] [cursor=pointer]:
+        - img [ref=e16]
+    - navigation [ref=e19]:
+      - button "Home" [ref=e20] [cursor=pointer]:
+        - img [ref=e21]
+        - generic [ref=e24]: Home
+      - button "AI Chat" [ref=e25] [cursor=pointer]:
+        - img [ref=e26]
+        - generic [ref=e28]: AI Chat
+      - button "Organization" [ref=e29] [cursor=pointer]:
+        - img [ref=e30]
+        - generic [ref=e34]: Organization
+      - button "Proposals" [ref=e35] [cursor=pointer]:
+        - img [ref=e36]
+        - generic [ref=e39]: Proposals
+      - button "Boards" [ref=e40] [cursor=pointer]:
+        - img [ref=e41]
+        - generic [ref=e46]: Boards
+      - button "Tasks" [ref=e47] [cursor=pointer]:
+        - img [ref=e48]
+        - generic [ref=e51]: Tasks
+      - button "Workflows" [ref=e52] [cursor=pointer]:
+        - img [ref=e53]
+        - generic [ref=e57]: Workflows
+      - button "Agents" [ref=e58] [cursor=pointer]:
+        - img [ref=e59]
+        - generic [ref=e62]: Agents
+      - button "Security" [ref=e63] [cursor=pointer]:
+        - img [ref=e64]
+        - generic [ref=e66]: Security
+      - button "Memory" [ref=e67] [cursor=pointer]:
+        - img [ref=e68]
+        - generic [ref=e78]: Memory
+      - button "Integrations" [ref=e79] [cursor=pointer]:
+        - img [ref=e80]
+        - generic [ref=e82]: Integrations
+      - button "Settings" [ref=e83] [cursor=pointer]:
+        - img [ref=e84]
+        - generic [ref=e87]: Settings
+      - generic "Organization sections" [ref=e447]:
+        - generic [ref=e448]: Organization
+        - button "Org Chart" [ref=e449] [cursor=pointer]
+        - button "People" [active] [ref=e450] [cursor=pointer]
+        - button "Departments" [ref=e451] [cursor=pointer]
+        - button "Teams" [ref=e452] [cursor=pointer]
+        - button "Invitations" [ref=e453] [cursor=pointer]
+        - button "Roles & Permissions" [ref=e454] [cursor=pointer]
+        - button "Governance" [ref=e455] [cursor=pointer]
+    - button "RK Rusty Khan Administrator" [ref=e88] [cursor=pointer]:
+      - generic [ref=e89]: RK
+      - generic [ref=e90]:
+        - strong [ref=e91]: Rusty Khan
+        - generic [ref=e92]: Administrator
+  - generic [ref=e93]:
+    - banner [ref=e94]:
+      - generic [ref=e95]:
+        - generic [ref=e96]:
+          - img [ref=e97]
+          - textbox "Search anything" [ref=e100]:
+            - /placeholder: Search anything...
+          - generic [ref=e101]: ⌘ K
+        - button "Notifications" [ref=e102] [cursor=pointer]:
+          - img [ref=e103]
+        - button "RK" [ref=e107] [cursor=pointer]
+    - main [ref=e108]:
+      - generic [ref=e457]:
+        - generic [ref=e458]:
+          - generic [ref=e459]:
+            - generic [ref=e460]:
+              - heading "Organization" [level=1] [ref=e461]
+              - paragraph [ref=e462]: The graph-backed source of truth for people, agents, structure, permissions, and governance.
+            - generic [ref=e463]:
+              - button "Governance Lock" [ref=e464] [cursor=pointer]:
+                - img [ref=e465]
+                - text: Governance Lock
+              - button "Add" [ref=e468] [cursor=pointer]:
+                - img [ref=e469]
+                - text: Add
+          - navigation "Page tabs" [ref=e470]:
+            - button "Org Chart" [ref=e471] [cursor=pointer]
+            - button "People" [ref=e472] [cursor=pointer]
+            - button "Departments" [ref=e473] [cursor=pointer]
+            - button "Teams" [ref=e474] [cursor=pointer]
+            - button "Invitations 0" [ref=e475] [cursor=pointer]:
+              - text: Invitations
+              - generic [ref=e476]: "0"
+            - button "Roles" [ref=e477] [cursor=pointer]
+            - button "Permissions" [ref=e478] [cursor=pointer]
+            - button "Governance 0" [ref=e479] [cursor=pointer]:
+              - text: Governance
+              - generic [ref=e480]: "0"
+        - generic [ref=e727]:
+          - generic [ref=e728]:
+            - generic [ref=e729]:
+              - img [ref=e730]
+              - textbox [ref=e733]:
+                - /placeholder: Search name, username, role, or title
+            - combobox [ref=e734]:
+              - option "All departments" [selected]
+              - option "Executive"
+              - option "Engineering"
+            - combobox [ref=e735]:
+              - option "All roles" [selected]
+              - option "owner"
+              - option "admin"
+              - option "manager"
+              - option "member"
+            - combobox [ref=e736]:
+              - option "Humans & agents" [selected]
+              - option "Human"
+              - option "Agent"
+            - button "Board" [ref=e737] [cursor=pointer]:
+              - img [ref=e738]
+              - text: Board
+          - table [ref=e741]:
+            - rowgroup [ref=e742]:
+              - row "Name Username Role Department Reports To Type Status" [ref=e743]:
+                - columnheader "Name" [ref=e744]
+                - columnheader "Username" [ref=e745]
+                - columnheader "Role" [ref=e746]
+                - columnheader "Department" [ref=e747]
+                - columnheader "Reports To" [ref=e748]
+                - columnheader "Type" [ref=e749]
+                - columnheader "Status" [ref=e750]
+                - columnheader [ref=e751]
+            - rowgroup [ref=e752]:
+              - row "RU Rusty Khan Founder & CEO rusty owner Executive - Human active Edit" [ref=e753]:
+                - cell "RU Rusty Khan Founder & CEO" [ref=e754]:
+                  - generic [ref=e755]:
+                    - generic [ref=e756]: RU
+                    - generic [ref=e757]:
+                      - strong [ref=e758]: Rusty Khan
+                      - generic [ref=e759]: Founder & CEO
+                - cell "rusty" [ref=e760]
+                - cell "owner" [ref=e761]
+                - cell "Executive" [ref=e762]
+                - cell "-" [ref=e763]
+                - cell "Human" [ref=e764]:
+                  - generic [ref=e765]: Human
+                - cell "active" [ref=e766]:
+                  - generic [ref=e767]: active
+                - cell "Edit" [ref=e769]:
+                  - button "Edit" [ref=e770] [cursor=pointer]
+              - row "CA Cash Chief Operating Officer - admin Executive Rusty Khan AI Agent active Edit" [ref=e771]:
+                - cell "CA Cash Chief Operating Officer" [ref=e772]:
+                  - generic [ref=e773]:
+                    - generic [ref=e774]: CA
+                    - generic [ref=e775]:
+                      - strong [ref=e776]: Cash
+                      - generic [ref=e777]: Chief Operating Officer
+                - cell "-" [ref=e778]
+                - cell "admin" [ref=e779]
+                - cell "Executive" [ref=e780]
+                - cell "Rusty Khan" [ref=e781]
+                - cell "AI Agent" [ref=e782]:
+                  - generic [ref=e783]: AI Agent
+                - cell "active" [ref=e784]:
+                  - generic [ref=e785]: active
+                - cell "Edit" [ref=e787]:
+                  - button "Edit" [ref=e788] [cursor=pointer]
+              - row "CO Cody Lead Engineer cody manager Engineering Rusty Khan Human active Edit" [ref=e789]:
+                - cell "CO Cody Lead Engineer" [ref=e790]:
+                  - generic [ref=e791]:
+                    - generic [ref=e792]: CO
+                    - generic [ref=e793]:
+                      - strong [ref=e794]: Cody
+                      - generic [ref=e795]: Lead Engineer
+                - cell "cody" [ref=e796]
+                - cell "manager" [ref=e797]
+                - cell "Engineering" [ref=e798]
+                - cell "Rusty Khan" [ref=e799]
+                - cell "Human" [ref=e800]:
+                  - generic [ref=e801]: Human
+                - cell "active" [ref=e802]:
+                  - generic [ref=e803]: active
+                - cell "Edit" [ref=e805]:
+                  - button "Edit" [ref=e806] [cursor=pointer]
+              - row "CO Codex Software Engineering Agent - member Engineering Cody AI Agent active Edit" [ref=e807]:
+                - cell "CO Codex Software Engineering Agent" [ref=e808]:
+                  - generic [ref=e809]:
+                    - generic [ref=e810]: CO
+                    - generic [ref=e811]:
+                      - strong [ref=e812]: Codex
+                      - generic [ref=e813]: Software Engineering Agent
+                - cell "-" [ref=e814]
+                - cell "member" [ref=e815]
+                - cell "Engineering" [ref=e816]
+                - cell "Cody" [ref=e817]
+                - cell "AI Agent" [ref=e818]:
+                  - generic [ref=e819]: AI Agent
+                - cell "active" [ref=e820]:
+                  - generic [ref=e821]: active
+                - cell "Edit" [ref=e823]:
+                  - button "Edit" [ref=e824] [cursor=pointer]

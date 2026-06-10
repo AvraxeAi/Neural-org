@@ -1,0 +1,18 @@
+- main [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e5]: O
+    - generic [ref=e6]:
+      - strong [ref=e7]: AVAI
+      - generic [ref=e8]: Organization Workspace
+  - generic [ref=e9]:
+    - generic [ref=e10]:
+      - generic [ref=e11]:
+        - img [ref=e12]
+        - text: Secure organization invitation
+      - heading "Join your organization" [level=1] [ref=e15]
+      - paragraph [ref=e16]: Complete your profile to create your account and enter the shared workspace.
+    - generic [ref=e17]:
+      - img [ref=e18]
+      - strong [ref=e22]: Invitation not found
+      - paragraph [ref=e23]: Ask an organization owner to generate a new invitation link or code.
+  - paragraph [ref=e24]: Invitation access is governed by your organization's roles and permissions.

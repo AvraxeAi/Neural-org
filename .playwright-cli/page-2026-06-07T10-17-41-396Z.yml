@@ -1,0 +1,210 @@
+- generic [ref=e8]:
+  - complementary [ref=e9]:
+    - generic [ref=e10]:
+      - generic [ref=e11]: O
+      - generic [ref=e12]:
+        - strong [ref=e13]: OpenClaw
+        - generic [ref=e14]: Command Center
+      - button "Collapse sidebar" [ref=e15] [cursor=pointer]:
+        - img [ref=e16]
+    - navigation [ref=e19]:
+      - button "Home" [ref=e20] [cursor=pointer]:
+        - img [ref=e21]
+        - generic [ref=e24]: Home
+      - button "AI Chat" [ref=e25] [cursor=pointer]:
+        - img [ref=e26]
+        - generic [ref=e28]: AI Chat
+      - button "Organization" [ref=e29] [cursor=pointer]:
+        - img [ref=e30]
+        - generic [ref=e34]: Organization
+      - button "Proposals" [ref=e35] [cursor=pointer]:
+        - img [ref=e36]
+        - generic [ref=e39]: Proposals
+      - button "Boards" [ref=e40] [cursor=pointer]:
+        - img [ref=e41]
+        - generic [ref=e46]: Boards
+      - button "Tasks" [ref=e47] [cursor=pointer]:
+        - img [ref=e48]
+        - generic [ref=e51]: Tasks
+      - button "Workflows" [ref=e52] [cursor=pointer]:
+        - img [ref=e53]
+        - generic [ref=e57]: Workflows
+      - button "Agents" [ref=e58] [cursor=pointer]:
+        - img [ref=e59]
+        - generic [ref=e62]: Agents
+      - button "Security" [ref=e63] [cursor=pointer]:
+        - img [ref=e64]
+        - generic [ref=e66]: Security
+      - button "Memory" [ref=e67] [cursor=pointer]:
+        - img [ref=e68]
+        - generic [ref=e78]: Memory
+      - button "Integrations" [ref=e79] [cursor=pointer]:
+        - img [ref=e80]
+        - generic [ref=e82]: Integrations
+      - button "Settings" [ref=e83] [cursor=pointer]:
+        - img [ref=e84]
+        - generic [ref=e87]: Settings
+      - generic "Organization sections" [ref=e447]:
+        - generic [ref=e448]: Organization
+        - button "Org Chart" [ref=e449] [cursor=pointer]
+        - button "People" [ref=e450] [cursor=pointer]
+        - button "Departments" [ref=e451] [cursor=pointer]
+        - button "Teams" [ref=e452] [cursor=pointer]
+        - button "Invitations" [ref=e453] [cursor=pointer]
+        - button "Roles & Permissions" [ref=e454] [cursor=pointer]
+        - button "Governance" [ref=e455] [cursor=pointer]
+    - button "RK Rusty Khan Administrator" [ref=e88] [cursor=pointer]:
+      - generic [ref=e89]: RK
+      - generic [ref=e90]:
+        - strong [ref=e91]: Rusty Khan
+        - generic [ref=e92]: Administrator
+  - generic [ref=e93]:
+    - banner [ref=e94]:
+      - generic [ref=e95]:
+        - generic [ref=e96]:
+          - img [ref=e97]
+          - textbox "Search anything" [ref=e100]:
+            - /placeholder: Search anything...
+          - generic [ref=e101]: ⌘ K
+        - button "Notifications" [ref=e102] [cursor=pointer]:
+          - img [ref=e103]
+        - button "RK" [ref=e107] [cursor=pointer]
+    - main [ref=e108]:
+      - generic [ref=e457]:
+        - generic [ref=e458]:
+          - generic [ref=e459]:
+            - generic [ref=e460]:
+              - heading "Organization" [level=1] [ref=e461]
+              - paragraph [ref=e462]: The graph-backed source of truth for people, agents, structure, permissions, and governance.
+            - generic [ref=e463]:
+              - button "Governance Lock" [ref=e464] [cursor=pointer]:
+                - img [ref=e465]
+                - text: Governance Lock
+              - button "Add" [ref=e468] [cursor=pointer]:
+                - img [ref=e469]
+                - text: Add
+          - navigation "Page tabs" [ref=e470]:
+            - button "Org Chart" [ref=e471] [cursor=pointer]
+            - button "People" [ref=e472] [cursor=pointer]
+            - button "Departments" [ref=e473] [cursor=pointer]
+            - button "Teams" [ref=e474] [cursor=pointer]
+            - button "Invitations 0" [ref=e475] [cursor=pointer]:
+              - text: Invitations
+              - generic [ref=e476]: "0"
+            - button "Roles" [ref=e477] [cursor=pointer]
+            - button "Permissions" [ref=e478] [cursor=pointer]
+            - button "Governance 0" [ref=e479] [cursor=pointer]:
+              - text: Governance
+              - generic [ref=e480]: "0"
+        - generic [ref=e482]:
+          - generic:
+            - generic [ref=e483]:
+              - img [ref=e484]
+              - text: 8 nodes · 5 relationships
+            - combobox "New relationship type" [ref=e489]:
+              - option "Reports To" [selected]
+              - option "Manages"
+              - option "Advises"
+              - option "Board Oversight"
+              - option "Temporary Assignment"
+            - button "Fit view" [ref=e490] [cursor=pointer]
+          - generic [ref=e491]:
+            - generic [ref=e493] [cursor=pointer]:
+              - generic:
+                - img:
+                  - generic:
+                    - button "Edge from board to dept-executive" [ref=e494]:
+                      - generic [ref=e497]:
+                        - generic: Board Oversight
+                    - button "Edge from board to dept-engineering" [ref=e501]:
+                      - generic [ref=e504]:
+                        - generic: Board Oversight
+                    - button "Edge from rusty to cash" [ref=e508]:
+                      - generic [ref=e511]:
+                        - generic: Reports To
+                    - button "Edge from rusty to cody" [ref=e515]:
+                      - generic [ref=e518]:
+                        - generic: Reports To
+                    - button "Edge from cody to codex" [ref=e522]:
+                      - generic [ref=e525]:
+                        - generic: Manages
+                - generic:
+                  - button "Board of Directors Board Board" [ref=e529]:
+                    - generic [ref=e530]:
+                      - img [ref=e533]
+                      - generic [ref=e535]:
+                        - strong [ref=e536]: Board of Directors
+                        - generic [ref=e537]: Board
+                      - generic [ref=e540]: Board
+                  - button "Executive Department Department Strategy, governance, and operating leadership." [ref=e542]:
+                    - generic [ref=e543]:
+                      - img [ref=e546]
+                      - generic [ref=e550]:
+                        - strong [ref=e551]: Executive
+                        - generic [ref=e552]: Department
+                      - generic [ref=e554]:
+                        - generic [ref=e555]: Department
+                        - generic [ref=e556]: Strategy, governance, and operating leadership.
+                  - button "Engineering Department Department Product, platform, and infrastructure." [ref=e558]:
+                    - generic [ref=e559]:
+                      - img [ref=e562]
+                      - generic [ref=e566]:
+                        - strong [ref=e567]: Engineering
+                        - generic [ref=e568]: Department
+                      - generic [ref=e570]:
+                        - generic [ref=e571]: Department
+                        - generic [ref=e572]: Product, platform, and infrastructure.
+                  - button "Platform Team Team Team Core platform delivery." [ref=e574]:
+                    - generic [ref=e575]:
+                      - img [ref=e578]
+                      - generic [ref=e583]:
+                        - strong [ref=e584]: Platform Team
+                        - generic [ref=e585]: Team
+                      - generic [ref=e587]:
+                        - generic [ref=e588]: Team
+                        - generic [ref=e589]: Core platform delivery.
+                  - button "Rusty Khan Founder & CEO Human Board" [ref=e591]:
+                    - generic [ref=e592]:
+                      - img [ref=e595]
+                      - generic [ref=e598]:
+                        - strong [ref=e599]: Rusty Khan
+                        - generic [ref=e600]: Founder & CEO
+                      - generic [ref=e602]:
+                        - generic [ref=e603]: Human
+                        - generic [ref=e604]:
+                          - img [ref=e605]
+                          - text: Board
+                  - button "Cash Chief Operating Officer AI Agent Board" [ref=e608]:
+                    - generic [ref=e609]:
+                      - img [ref=e612]
+                      - generic [ref=e615]:
+                        - strong [ref=e616]: Cash
+                        - generic [ref=e617]: Chief Operating Officer
+                      - generic [ref=e619]:
+                        - generic [ref=e620]: AI Agent
+                        - generic [ref=e621]:
+                          - img [ref=e622]
+                          - text: Board
+                  - button "Cody Lead Engineer Human" [ref=e625]:
+                    - generic [ref=e626]:
+                      - img [ref=e629]
+                      - generic [ref=e632]:
+                        - strong [ref=e633]: Cody
+                        - generic [ref=e634]: Lead Engineer
+                      - generic [ref=e637]: Human
+                  - button "Codex Software Engineering Agent AI Agent" [ref=e639]:
+                    - generic [ref=e640]:
+                      - img [ref=e643]
+                      - generic [ref=e646]:
+                        - strong [ref=e647]: Codex
+                        - generic [ref=e648]: Software Engineering Agent
+                      - generic [ref=e651]: AI Agent
+            - img [ref=e653]
+            - generic [ref=e655]:
+              - button "zoom in" [ref=e656] [cursor=pointer]:
+                - img [ref=e657]
+              - button "zoom out" [ref=e659] [cursor=pointer]:
+                - img [ref=e660]
+              - button "fit view" [ref=e662] [cursor=pointer]:
+                - img [ref=e663]
+            - img "React Flow mini map" [ref=e666]

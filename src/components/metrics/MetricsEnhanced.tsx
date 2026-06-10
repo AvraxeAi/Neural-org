@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { metricsApi } from '../../lib/api';
 
 type Range = '1d' | '7d' | '30d' | '90d';
 
@@ -166,8 +167,21 @@ const RANGE_DATA: Record<Range, {
 
 export function MetricsEnhanced() {
   const [range, setRange] = useState<Range>('7d');
+  const [liveMetrics, setLiveMetrics] = useState<any>(null);
   const data = RANGE_DATA[range];
-  const totalCost = data.agentCosts.reduce((a, b) => a + b.cost, 0);
+  const agentCosts: { name: string; cost: number; tokens: number; sessions: number; color: string; icon: string }[] = range === '1d' && liveMetrics
+    ? (liveMetrics.byAgent || []).map((a: any) => ({ name: a.name, cost: a.cost, tokens: a.tokens, sessions: 0, color: '#00E6A8', icon: '◎' }))
+    : data.agentCosts;
+  const totalCost = agentCosts.reduce((a, b) => a + b.cost, 0);
+
+  useEffect(() => {
+    metricsApi.get()
+      .then(setLiveMetrics)
+      .catch(error => {
+        console.error('Failed to load metrics', error);
+        setLiveMetrics(null);
+      });
+  }, []);
 
   return (
     <div style={{ padding: '24px', height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -178,9 +192,9 @@ export function MetricsEnhanced() {
           <h2 style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-0.3px' }}>Metrics & Analytics</h2>
           <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Performance, cost, and AI efficiency tracking</p>
         </div>
-        <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 10, padding: 3 }}>
+        <div style={{ display: 'flex', gap: 2, background: 'var(--surface-raise)', border: '1px solid var(--border)', borderRadius: 10, padding: 3 }}>
           {(['1d','7d','30d','90d'] as Range[]).map(r => (
-            <button key={r} onClick={() => setRange(r)} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: range === r ? 'white' : 'transparent', fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: range === r ? 700 : 500, color: range === r ? 'var(--text-primary)' : 'var(--text-muted)', cursor: 'pointer', transition: 'all 0.15s', boxShadow: range === r ? '0 2px 8px rgba(0,0,0,0.08)' : 'none' }}>{r}</button>
+            <button key={r} onClick={() => setRange(r)} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: range === r ? 'var(--surface-hover)' : 'transparent', fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: range === r ? 700 : 500, color: range === r ? 'var(--text-primary)' : 'var(--text-muted)', cursor: 'pointer', transition: 'all 0.15s', boxShadow: 'none' }}>{r}</button>
           ))}
         </div>
       </div>
@@ -217,7 +231,7 @@ export function MetricsEnhanced() {
                   <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{c.name}</span>
                   <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{c.pct}%</span>
                 </div>
-                <div style={{ height: 6, background: 'rgba(0,0,0,0.06)', borderRadius: 99 }}>
+                <div style={{ height: 6, background: 'var(--border)', borderRadius: 99 }}>
                   <div style={{ height: '100%', width: `${c.pct}%`, background: c.color, borderRadius: 99, transition: 'width 0.8s' }} />
                 </div>
               </div>
@@ -228,19 +242,19 @@ export function MetricsEnhanced() {
 
       {/* Per-agent analytics */}
       <GlassCard>
-        <SectionTitle>Agent Performance ({range})</SectionTitle>
+        <SectionTitle action={liveMetrics ? <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--status-green)' }}>● Live</span> : undefined}>Agent Performance ({range})</SectionTitle>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
           {/* Table header */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr 1fr', gap: 12, padding: '8px 12px', background: 'rgba(0,0,0,0.03)', borderRadius: '8px 8px 0 0' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr 1fr', gap: 12, padding: '8px 12px', background: 'var(--border)', borderRadius: '8px 8px 0 0' }}>
             {['Agent','Sessions','Tokens','Cost','Cost / 1k tokens'].map(h => (
               <span key={h} style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{h}</span>
             ))}
           </div>
-          {data.agentCosts.map((a, i) => {
-            const costPer1k = ((a.cost / a.tokens) * 1000).toFixed(4);
+          {agentCosts.map((a, i) => {
+            const costPer1k = a.tokens ? ((a.cost / a.tokens) * 1000).toFixed(4) : '0.0000';
             return (
-              <div key={a.name} style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr 1fr', gap: 12, padding: '12px', borderBottom: i < data.agentCosts.length - 1 ? '1px solid rgba(0,0,0,0.04)' : 'none', alignItems: 'center', transition: 'background 0.12s', cursor: 'default' }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.02)')}
+              <div key={a.name} style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr 1fr', gap: 12, padding: '12px', borderBottom: i < agentCosts.length - 1 ? '1px solid var(--border)' : 'none', alignItems: 'center', transition: 'background 0.12s', cursor: 'default' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--border)')}
                 onMouseLeave={e => (e.currentTarget.style.background = '')}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
@@ -252,19 +266,19 @@ export function MetricsEnhanced() {
                 <span style={{ fontSize: 13, fontFamily: 'DM Mono,monospace', fontWeight: 700, color: 'var(--text-primary)' }}>${a.cost.toFixed(2)}</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ fontSize: 12, fontFamily: 'DM Mono,monospace', color: 'var(--text-muted)' }}>${costPer1k}</span>
-                  <div style={{ flex: 1, height: 4, background: 'rgba(0,0,0,0.06)', borderRadius: 99 }}>
-                    <div style={{ height: '100%', width: `${(a.cost / totalCost) * 100}%`, background: a.color, borderRadius: 99 }} />
+                  <div style={{ flex: 1, height: 4, background: 'var(--border)', borderRadius: 99 }}>
+                    <div style={{ height: '100%', width: `${totalCost ? (a.cost / totalCost) * 100 : 0}%`, background: a.color, borderRadius: 99 }} />
                   </div>
                 </div>
               </div>
             );
           })}
           {/* Totals row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr 1fr', gap: 12, padding: '10px 12px', background: 'rgba(0,0,0,0.02)', borderRadius: '0 0 8px 8px', borderTop: '1px solid rgba(0,0,0,0.07)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr 1fr', gap: 12, padding: '10px 12px', background: 'var(--border)', borderRadius: '0 0 8px 8px', borderTop: '1px solid var(--border)' }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>TOTAL</span>
-            <span style={{ fontSize: 12, fontFamily: 'DM Mono,monospace', fontWeight: 700 }}>{data.agentCosts.reduce((a,b) => a+b.sessions,0)}</span>
+            <span style={{ fontSize: 12, fontFamily: 'DM Mono,monospace', fontWeight: 700 }}>{agentCosts.reduce((a,b) => a+b.sessions,0)}</span>
             <span style={{ fontSize: 12, fontFamily: 'DM Mono,monospace', fontWeight: 700 }}>
-              {(() => { const t = data.agentCosts.reduce((a,b) => a+b.tokens,0); return t >= 1000000 ? `${(t/1000000).toFixed(1)}M` : `${(t/1000).toFixed(0)}k`; })()}
+              {(() => { const t = agentCosts.reduce((a,b) => a+b.tokens,0); return t >= 1000000 ? `${(t/1000000).toFixed(1)}M` : `${(t/1000).toFixed(0)}k`; })()}
             </span>
             <span style={{ fontSize: 12, fontFamily: 'DM Mono,monospace', fontWeight: 700, color: 'var(--accent-dark)' }}>${totalCost.toFixed(2)}</span>
             <span />

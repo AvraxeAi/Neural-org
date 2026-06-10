@@ -1,0 +1,324 @@
+- generic [ref=e2]:
+  - alert [ref=e3]:
+    - generic [ref=e4]: ⚠
+    - generic [ref=e5]: Gateway not connected — Set VITE_API_BASE_URL to show live gateway data.
+    - button "Configure API" [ref=e6] [cursor=pointer]
+    - button "Dismiss banner" [ref=e7] [cursor=pointer]: ✕
+  - generic [ref=e8]:
+    - complementary [ref=e9]:
+      - generic [ref=e10]:
+        - generic [ref=e11]: O
+        - generic [ref=e12]:
+          - strong [ref=e13]: OpenClaw
+          - generic [ref=e14]: Command Center
+        - button "Collapse sidebar" [ref=e15] [cursor=pointer]:
+          - img [ref=e16]
+      - navigation [ref=e19]:
+        - button "Home" [ref=e20] [cursor=pointer]:
+          - img [ref=e21]
+          - generic [ref=e24]: Home
+        - button "AI Chat" [ref=e25] [cursor=pointer]:
+          - img [ref=e26]
+          - generic [ref=e28]: AI Chat
+        - button "Organization" [ref=e29] [cursor=pointer]:
+          - img [ref=e30]
+          - generic [ref=e34]: Organization
+        - button "Proposals" [ref=e35] [cursor=pointer]:
+          - img [ref=e36]
+          - generic [ref=e39]: Proposals
+        - button "Boards" [ref=e40] [cursor=pointer]:
+          - img [ref=e41]
+          - generic [ref=e46]: Boards
+        - button "Tasks" [ref=e47] [cursor=pointer]:
+          - img [ref=e48]
+          - generic [ref=e51]: Tasks
+        - button "Workflows" [ref=e52] [cursor=pointer]:
+          - img [ref=e53]
+          - generic [ref=e57]: Workflows
+        - button "Agents" [ref=e58] [cursor=pointer]:
+          - img [ref=e59]
+          - generic [ref=e62]: Agents
+        - button "Security" [ref=e63] [cursor=pointer]:
+          - img [ref=e64]
+          - generic [ref=e66]: Security
+        - button "Memory" [ref=e67] [cursor=pointer]:
+          - img [ref=e68]
+          - generic [ref=e78]: Memory
+        - button "Integrations" [ref=e79] [cursor=pointer]:
+          - img [ref=e80]
+          - generic [ref=e82]: Integrations
+        - button "Settings" [ref=e83] [cursor=pointer]:
+          - img [ref=e84]
+          - generic [ref=e87]: Settings
+      - button "RK Rusty Khan Administrator" [ref=e88] [cursor=pointer]:
+        - generic [ref=e89]: RK
+        - generic [ref=e90]:
+          - strong [ref=e91]: Rusty Khan
+          - generic [ref=e92]: Administrator
+    - generic [ref=e93]:
+      - banner [ref=e94]:
+        - generic [ref=e95]:
+          - generic [ref=e96]:
+            - img [ref=e97]
+            - textbox "Search anything" [ref=e100]:
+              - /placeholder: Search anything...
+            - generic [ref=e101]: ⌘ K
+          - button "Notifications" [ref=e102] [cursor=pointer]:
+            - img [ref=e103]
+          - button "RK" [ref=e107] [cursor=pointer]
+      - main [ref=e108]:
+        - generic [ref=e110]:
+          - generic [ref=e112]:
+            - heading "Boards" [level=1] [ref=e113]
+            - paragraph [ref=e114]: Manage board members, meetings, votes, and governance.
+          - generic [ref=e115]:
+            - button "Overview" [ref=e116] [cursor=pointer]
+            - button "Members" [ref=e117] [cursor=pointer]
+            - button "Committees" [ref=e118] [cursor=pointer]
+            - button "Meetings" [ref=e119] [cursor=pointer]
+            - button "Votes" [ref=e120] [cursor=pointer]
+            - button "Policies" [ref=e121] [cursor=pointer]
+            - button "Settings" [ref=e122] [cursor=pointer]
+          - generic [ref=e123]:
+            - generic [ref=e124]:
+              - generic [ref=e125]:
+                - generic [ref=e126]:
+                  - heading "Board Members" [level=2] [ref=e127]
+                  - button "Invite Member" [ref=e128] [cursor=pointer]:
+                    - img [ref=e129]
+                    - text: Invite Member
+                - table [ref=e133]:
+                  - rowgroup [ref=e134]:
+                    - row "Member Role Type Joined Status" [ref=e135]:
+                      - columnheader "Member" [ref=e136]
+                      - columnheader "Role" [ref=e137]
+                      - columnheader "Type" [ref=e138]
+                      - columnheader "Joined" [ref=e139]
+                      - columnheader "Status" [ref=e140]
+                      - columnheader [ref=e141]
+                  - rowgroup [ref=e142]:
+                    - row "RK Rusty KhanYou rusty@avraxe.com Board Chair Human Jan 10, 2024 Active" [ref=e143]:
+                      - cell "RK Rusty KhanYou rusty@avraxe.com" [ref=e144]:
+                        - generic [ref=e145]:
+                          - generic [ref=e146]: RK
+                          - generic [ref=e147]:
+                            - strong [ref=e148]:
+                              - text: Rusty Khan
+                              - emphasis [ref=e149]: You
+                            - generic [ref=e150]: rusty@avraxe.com
+                      - cell "Board Chair" [ref=e151]
+                      - cell "Human" [ref=e152]
+                      - cell "Jan 10, 2024" [ref=e153]
+                      - cell "Active" [ref=e154]:
+                        - generic [ref=e155]: Active
+                      - cell [ref=e157]:
+                        - button [ref=e158] [cursor=pointer]:
+                          - img [ref=e159]
+                    - row "AK Ayesha Khan ayesha@avraxe.com COO Human Jan 12, 2024 Active" [ref=e163]:
+                      - cell "AK Ayesha Khan ayesha@avraxe.com" [ref=e164]:
+                        - generic [ref=e165]:
+                          - generic [ref=e166]: AK
+                          - generic [ref=e167]:
+                            - strong [ref=e168]: Ayesha Khan
+                            - generic [ref=e169]: ayesha@avraxe.com
+                      - cell "COO" [ref=e170]
+                      - cell "Human" [ref=e171]
+                      - cell "Jan 12, 2024" [ref=e172]
+                      - cell "Active" [ref=e173]:
+                        - generic [ref=e174]: Active
+                      - cell [ref=e176]:
+                        - button [ref=e177] [cursor=pointer]:
+                          - img [ref=e178]
+                    - row "MR Michael Roberts michael@avraxe.com CFO Human Jan 15, 2024 Active" [ref=e182]:
+                      - cell "MR Michael Roberts michael@avraxe.com" [ref=e183]:
+                        - generic [ref=e184]:
+                          - generic [ref=e185]: MR
+                          - generic [ref=e186]:
+                            - strong [ref=e187]: Michael Roberts
+                            - generic [ref=e188]: michael@avraxe.com
+                      - cell "CFO" [ref=e189]
+                      - cell "Human" [ref=e190]
+                      - cell "Jan 15, 2024" [ref=e191]
+                      - cell "Active" [ref=e192]:
+                        - generic [ref=e193]: Active
+                      - cell [ref=e195]:
+                        - button [ref=e196] [cursor=pointer]:
+                          - img [ref=e197]
+                    - row "SC Sarah Chen sarah@avraxe.com CTO Human Jan 18, 2024 Active" [ref=e201]:
+                      - cell "SC Sarah Chen sarah@avraxe.com" [ref=e202]:
+                        - generic [ref=e203]:
+                          - generic [ref=e204]: SC
+                          - generic [ref=e205]:
+                            - strong [ref=e206]: Sarah Chen
+                            - generic [ref=e207]: sarah@avraxe.com
+                      - cell "CTO" [ref=e208]
+                      - cell "Human" [ref=e209]
+                      - cell "Jan 18, 2024" [ref=e210]
+                      - cell "Active" [ref=e211]:
+                        - generic [ref=e212]: Active
+                      - cell [ref=e214]:
+                        - button [ref=e215] [cursor=pointer]:
+                          - img [ref=e216]
+                    - row "Hermes-7 hermes@agents.openclaw.ai Chief of Staff (AI) AI Agent Jan 20, 2024 Active" [ref=e220]:
+                      - cell "Hermes-7 hermes@agents.openclaw.ai" [ref=e221]:
+                        - generic [ref=e222]:
+                          - img [ref=e224]
+                          - generic [ref=e227]:
+                            - strong [ref=e228]: Hermes-7
+                            - generic [ref=e229]: hermes@agents.openclaw.ai
+                      - cell "Chief of Staff (AI)" [ref=e230]
+                      - cell "AI Agent" [ref=e231]
+                      - cell "Jan 20, 2024" [ref=e232]
+                      - cell "Active" [ref=e233]:
+                        - generic [ref=e234]: Active
+                      - cell [ref=e236]:
+                        - button [ref=e237] [cursor=pointer]:
+                          - img [ref=e238]
+                    - row "Claude-3.5 claude@agents.anthropic.com Strategy Advisor (AI) AI Agent Jan 22, 2024 Active" [ref=e242]:
+                      - cell "Claude-3.5 claude@agents.anthropic.com" [ref=e243]:
+                        - generic [ref=e244]:
+                          - img [ref=e246]
+                          - generic [ref=e249]:
+                            - strong [ref=e250]: Claude-3.5
+                            - generic [ref=e251]: claude@agents.anthropic.com
+                      - cell "Strategy Advisor (AI)" [ref=e252]
+                      - cell "AI Agent" [ref=e253]
+                      - cell "Jan 22, 2024" [ref=e254]
+                      - cell "Active" [ref=e255]:
+                        - generic [ref=e256]: Active
+                      - cell [ref=e258]:
+                        - button [ref=e259] [cursor=pointer]:
+                          - img [ref=e260]
+                    - row "Gemini-1.5 gemini@agents.google.com Risk Advisor (AI) AI Agent Jan 25, 2024 Standby" [ref=e264]:
+                      - cell "Gemini-1.5 gemini@agents.google.com" [ref=e265]:
+                        - generic [ref=e266]:
+                          - img [ref=e268]
+                          - generic [ref=e271]:
+                            - strong [ref=e272]: Gemini-1.5
+                            - generic [ref=e273]: gemini@agents.google.com
+                      - cell "Risk Advisor (AI)" [ref=e274]
+                      - cell "AI Agent" [ref=e275]
+                      - cell "Jan 25, 2024" [ref=e276]
+                      - cell "Standby" [ref=e277]:
+                        - generic [ref=e278]: Standby
+                      - cell [ref=e280]:
+                        - button [ref=e281] [cursor=pointer]:
+                          - img [ref=e282]
+                    - row "OpenClaw Governor governor@openclaw.systems Governance (AI) AI Agent Jan 28, 2024 Active" [ref=e286]:
+                      - cell "OpenClaw Governor governor@openclaw.systems" [ref=e287]:
+                        - generic [ref=e288]:
+                          - img [ref=e290]
+                          - generic [ref=e293]:
+                            - strong [ref=e294]: OpenClaw Governor
+                            - generic [ref=e295]: governor@openclaw.systems
+                      - cell "Governance (AI)" [ref=e296]
+                      - cell "AI Agent" [ref=e297]
+                      - cell "Jan 28, 2024" [ref=e298]
+                      - cell "Active" [ref=e299]:
+                        - generic [ref=e300]: Active
+                      - cell [ref=e302]:
+                        - button [ref=e303] [cursor=pointer]:
+                          - img [ref=e304]
+                - generic [ref=e308]: Showing 1 to 8 of 8 members
+              - generic [ref=e309]:
+                - generic [ref=e310]:
+                  - heading "Recent Activity" [level=2] [ref=e311]
+                  - button "View all" [ref=e312] [cursor=pointer]
+                - generic [ref=e313]:
+                  - generic [ref=e314]:
+                    - img [ref=e315]
+                    - generic [ref=e318]: Board vote completed on "AI Security Audit Framework"
+                    - time [ref=e319]: May 20, 2025 • 10:24 AM
+                  - generic [ref=e320]:
+                    - img [ref=e321]
+                    - generic [ref=e326]: New board member Hermes-7 joined the board
+                    - time [ref=e327]: May 20, 2025 • 9:15 AM
+                  - generic [ref=e328]:
+                    - img [ref=e329]
+                    - generic [ref=e331]: Meeting "Board Meeting – May 2025" scheduled
+                    - time [ref=e332]: May 19, 2025 • 4:42 PM
+                  - generic [ref=e333]:
+                    - img [ref=e334]
+                    - generic [ref=e337]: Proposal "Budget Allocation Q2" moved to voting
+                    - time [ref=e338]: May 18, 2025 • 2:08 PM
+                  - generic [ref=e339]:
+                    - img [ref=e340]
+                    - generic [ref=e343]: "Claude-3.5 submitted recommendation on proposal #41"
+                    - time [ref=e344]: May 18, 2025 • 11:33 AM
+                - button "View all activity" [ref=e345] [cursor=pointer]:
+                  - generic [ref=e346]: View all activity
+                  - img [ref=e347]
+            - complementary [ref=e349]:
+              - generic [ref=e350]:
+                - generic [ref=e351]:
+                  - heading "Upcoming Meetings" [level=2] [ref=e352]
+                  - button "View all" [ref=e353] [cursor=pointer]
+                - generic [ref=e354]:
+                  - img [ref=e356]
+                  - generic [ref=e358]:
+                    - strong [ref=e359]: Board Meeting – May 2025
+                    - generic [ref=e360]: May 24, 2025 • 10:00 AM PDT
+                  - emphasis [ref=e361]: In 2 days
+                - generic [ref=e362]:
+                  - img [ref=e364]
+                  - generic [ref=e366]:
+                    - strong [ref=e367]: Budget Review Q2
+                    - generic [ref=e368]: May 31, 2025 • 2:00 PM PDT
+                  - emphasis [ref=e369]: In 9 days
+                - generic [ref=e370]:
+                  - img [ref=e372]
+                  - generic [ref=e374]:
+                    - strong [ref=e375]: Strategy Planning Session
+                    - generic [ref=e376]: Jun 7, 2025 • 11:00 AM PDT
+                  - emphasis [ref=e377]: In 16 days
+                - button "View calendar" [ref=e378] [cursor=pointer]:
+                  - generic [ref=e379]: View calendar
+                  - img [ref=e380]
+              - generic [ref=e382]:
+                - generic [ref=e383]:
+                  - heading "Recent Votes" [level=2] [ref=e384]
+                  - button "View all" [ref=e385] [cursor=pointer]
+                - generic [ref=e386]:
+                  - img [ref=e388]
+                  - generic [ref=e391]:
+                    - strong [ref=e392]: AI Security Audit Framework
+                    - generic [ref=e393]: "Proposal #42 • May 20, 2025"
+                  - emphasis [ref=e394]: Approved
+                - generic [ref=e395]:
+                  - img [ref=e397]
+                  - generic [ref=e400]:
+                    - strong [ref=e401]: Budget Allocation Q2
+                    - generic [ref=e402]: "Proposal #41 • May 18, 2025"
+                  - emphasis [ref=e403]: Approved
+                - generic [ref=e404]:
+                  - img [ref=e406]
+                  - generic [ref=e409]:
+                    - strong [ref=e410]: New Hiring Workflow
+                    - generic [ref=e411]: "Proposal #40 • May 15, 2025"
+                  - emphasis [ref=e412]: Rejected
+                - button "View all proposals" [ref=e413] [cursor=pointer]:
+                  - generic [ref=e414]: View all proposals
+                  - img [ref=e415]
+              - generic [ref=e417]:
+                - heading "Board Composition" [level=2] [ref=e418]
+                - generic [ref=e419]:
+                  - generic [ref=e420]:
+                    - img [ref=e421]
+                    - generic [ref=e425]:
+                      - strong [ref=e426]: "8"
+                      - generic [ref=e427]: Total Members
+                  - generic [ref=e428]:
+                    - generic [ref=e429]:
+                      - generic [ref=e431]: Human Members
+                      - strong [ref=e432]: "4"
+                    - generic [ref=e433]:
+                      - generic [ref=e435]: AI Agents
+                      - strong [ref=e436]: "4"
+                    - generic [ref=e437]:
+                      - generic [ref=e439]: Vacant Seats
+                      - strong [ref=e440]: "0"
+                - generic [ref=e441]:
+                  - generic [ref=e442]: Governance Health
+                  - strong [ref=e443]:
+                    - img [ref=e444]
+                    - text: Healthy

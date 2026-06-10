@@ -1,0 +1,265 @@
+- generic [ref=e553]:
+  - complementary [ref=e554]:
+    - generic [ref=e555]:
+      - generic [ref=e556]: O
+      - generic [ref=e557]:
+        - strong [ref=e558]: OpenClaw
+        - generic [ref=e559]: Command Center
+      - button "Collapse sidebar" [ref=e560] [cursor=pointer]:
+        - img [ref=e561]
+    - navigation [ref=e564]:
+      - button "Home" [ref=e565] [cursor=pointer]:
+        - img [ref=e566]
+        - generic [ref=e569]: Home
+      - button "AI Chat" [ref=e570] [cursor=pointer]:
+        - img [ref=e571]
+        - generic [ref=e573]: AI Chat
+      - button "Organization" [ref=e574] [cursor=pointer]:
+        - img [ref=e575]
+        - generic [ref=e579]: Organization
+      - button "Proposals" [ref=e580] [cursor=pointer]:
+        - img [ref=e581]
+        - generic [ref=e584]: Proposals
+      - button "Boards" [ref=e585] [cursor=pointer]:
+        - img [ref=e586]
+        - generic [ref=e591]: Boards
+      - button "Tasks" [ref=e592] [cursor=pointer]:
+        - img [ref=e593]
+        - generic [ref=e596]: Tasks
+      - button "Workflows" [ref=e597] [cursor=pointer]:
+        - img [ref=e598]
+        - generic [ref=e602]: Workflows
+      - button "Security" [active] [ref=e603] [cursor=pointer]:
+        - img [ref=e604]
+        - generic [ref=e606]: Security
+      - button "Memory" [ref=e607] [cursor=pointer]:
+        - img [ref=e608]
+        - generic [ref=e618]: Memory
+      - button "Integrations" [ref=e619] [cursor=pointer]:
+        - img [ref=e620]
+        - generic [ref=e622]: Integrations
+      - button "Settings" [ref=e623] [cursor=pointer]:
+        - img [ref=e624]
+        - generic [ref=e627]: Settings
+    - button "RK Rusty Khan Administrator" [ref=e628] [cursor=pointer]:
+      - generic [ref=e629]: RK
+      - generic [ref=e630]:
+        - strong [ref=e631]: Rusty Khan
+        - generic [ref=e632]: Administrator
+  - generic [ref=e633]:
+    - banner [ref=e634]:
+      - generic [ref=e635]:
+        - generic [ref=e636]:
+          - img [ref=e637]
+          - textbox "Search anything" [ref=e640]:
+            - /placeholder: Search anything...
+          - generic [ref=e641]: ⌘ K
+        - button "Notifications" [ref=e642] [cursor=pointer]:
+          - img [ref=e643]
+        - button "RK" [ref=e647] [cursor=pointer]
+    - main [ref=e648]:
+      - generic [ref=e886]:
+        - generic [ref=e888]:
+          - heading "Security Center" [level=1] [ref=e889]
+          - paragraph [ref=e890]: Monitor, detect, and respond to security risks across your organization.
+        - generic [ref=e891]:
+          - generic [ref=e892]:
+            - generic [ref=e893]:
+              - img [ref=e894]
+              - generic [ref=e897]: Security Score
+            - generic [ref=e898]: 92/100
+            - paragraph [ref=e899]: ↑ 4 pts from last week
+            - img [ref=e900]
+          - generic [ref=e902]:
+            - generic [ref=e903]:
+              - img [ref=e904]
+              - generic [ref=e906]: Active Alerts
+            - generic [ref=e907]: "3"
+            - paragraph [ref=e908]: 2 Critical • 1 High
+            - img [ref=e909]
+          - generic [ref=e911]:
+            - generic [ref=e912]:
+              - img [ref=e913]
+              - generic [ref=e916]: Open Investigations
+            - generic [ref=e917]: "5"
+            - paragraph [ref=e918]: 2 Critical • 3 High
+            - img [ref=e919]
+          - generic [ref=e921]:
+            - generic [ref=e922]:
+              - img [ref=e923]
+              - generic [ref=e925]: Systems Monitored
+            - generic [ref=e926]: "48"
+            - paragraph [ref=e927]: All systems operational
+            - img [ref=e928]
+        - generic [ref=e930]:
+          - generic [ref=e931]:
+            - generic [ref=e932]:
+              - img [ref=e934]
+              - generic [ref=e936]:
+                - heading "Red Team" [level=2] [ref=e937]
+                - generic [ref=e938]: Offensive Security
+            - paragraph [ref=e939]: Simulate attacks and identify weaknesses before adversaries can exploit them.
+            - generic [ref=e940]:
+              - generic [ref=e941]:
+                - generic [ref=e942]: Assigned Agents
+                - strong [ref=e943]:
+                  - img [ref=e945]
+                  - img [ref=e949]
+                  - img [ref=e953]
+                  - emphasis [ref=e956]: "+2"
+              - generic [ref=e957]:
+                - generic [ref=e958]: Current Tasks
+                - strong [ref=e959]: "4"
+              - generic [ref=e960]:
+                - generic [ref=e961]: Recent Findings
+                - strong [ref=e962]: "7"
+              - generic [ref=e963]:
+                - generic [ref=e964]: Status
+                - strong [ref=e965]: Active
+            - button "View Red Team Dashboard" [ref=e967] [cursor=pointer]:
+              - text: View Red Team Dashboard
+              - img [ref=e968]
+          - generic [ref=e970]:
+            - generic [ref=e971]:
+              - img [ref=e973]
+              - generic [ref=e976]:
+                - heading "Blue Team" [level=2] [ref=e977]
+                - generic [ref=e978]: Defensive Security
+            - paragraph [ref=e979]: Monitor systems, detect threats, and respond to security incidents.
+            - generic [ref=e980]:
+              - generic [ref=e981]:
+                - generic [ref=e982]: Assigned Agents
+                - strong [ref=e983]:
+                  - img [ref=e985]
+                  - img [ref=e989]
+                  - img [ref=e993]
+                  - emphasis [ref=e996]: "+3"
+              - generic [ref=e997]:
+                - generic [ref=e998]: Current Tasks
+                - strong [ref=e999]: "6"
+              - generic [ref=e1000]:
+                - generic [ref=e1001]: Recent Findings
+                - strong [ref=e1002]: "12"
+              - generic [ref=e1003]:
+                - generic [ref=e1004]: Status
+                - strong [ref=e1005]: Active
+            - button "View Blue Team Dashboard" [ref=e1007] [cursor=pointer]:
+              - text: View Blue Team Dashboard
+              - img [ref=e1008]
+          - generic [ref=e1010]:
+            - generic [ref=e1011]:
+              - img [ref=e1013]
+              - generic [ref=e1017]:
+                - heading "Purple Team" [level=2] [ref=e1018]
+                - generic [ref=e1019]: Collaborative Security
+            - paragraph [ref=e1020]: Bridge offensive and defensive insights to improve overall security posture.
+            - generic [ref=e1021]:
+              - generic [ref=e1022]:
+                - generic [ref=e1023]: Assigned Agents
+                - strong [ref=e1024]:
+                  - img [ref=e1026]
+                  - img [ref=e1030]
+                  - img [ref=e1034]
+                  - emphasis [ref=e1037]: "+2"
+              - generic [ref=e1038]:
+                - generic [ref=e1039]: Current Tasks
+                - strong [ref=e1040]: "3"
+              - generic [ref=e1041]:
+                - generic [ref=e1042]: Recent Findings
+                - strong [ref=e1043]: "5"
+              - generic [ref=e1044]:
+                - generic [ref=e1045]: Status
+                - strong [ref=e1046]: Active
+            - button "View Purple Team Dashboard" [ref=e1048] [cursor=pointer]:
+              - text: View Purple Team Dashboard
+              - img [ref=e1049]
+        - generic [ref=e1051]:
+          - generic [ref=e1052]:
+            - generic [ref=e1053]:
+              - heading "Threat Feed" [level=2] [ref=e1054]
+              - button "Filter" [ref=e1055] [cursor=pointer]:
+                - img [ref=e1056]
+                - text: Filter
+            - table [ref=e1059]:
+              - rowgroup [ref=e1060]:
+                - row "Severity Title Source Status Date" [ref=e1061]:
+                  - columnheader "Severity" [ref=e1062]
+                  - columnheader "Title" [ref=e1063]
+                  - columnheader "Source" [ref=e1064]
+                  - columnheader "Status" [ref=e1065]
+                  - columnheader "Date" [ref=e1066]
+              - rowgroup [ref=e1067]:
+                - row "Critical Possible credential stuffing attack Auth System Investigating May 20, 10:24 AM" [ref=e1068]:
+                  - cell "Critical" [ref=e1069]
+                  - cell "Possible credential stuffing attack" [ref=e1070]
+                  - cell "Auth System" [ref=e1071]
+                  - cell "Investigating" [ref=e1072]
+                  - cell "May 20, 10:24 AM" [ref=e1073]
+                - row "High Unusual API usage detected API Gateway Investigating May 20, 9:15 AM" [ref=e1074]:
+                  - cell "High" [ref=e1075]
+                  - cell "Unusual API usage detected" [ref=e1076]
+                  - cell "API Gateway" [ref=e1077]
+                  - cell "Investigating" [ref=e1078]
+                  - cell "May 20, 9:15 AM" [ref=e1079]
+                - row "High Admin privilege escalation attempt Access Control Detected May 20, 8:43 AM" [ref=e1080]:
+                  - cell "High" [ref=e1081]
+                  - cell "Admin privilege escalation attempt" [ref=e1082]
+                  - cell "Access Control" [ref=e1083]
+                  - cell "Detected" [ref=e1084]
+                  - cell "May 20, 8:43 AM" [ref=e1085]
+                - row "Medium Suspicious login location Identity Service Monitoring May 20, 7:22 AM" [ref=e1086]:
+                  - cell "Medium" [ref=e1087]
+                  - cell "Suspicious login location" [ref=e1088]
+                  - cell "Identity Service" [ref=e1089]
+                  - cell "Monitoring" [ref=e1090]
+                  - cell "May 20, 7:22 AM" [ref=e1091]
+                - row "Low Outdated dependency detected Code Scanner Open May 19, 11:03 PM" [ref=e1092]:
+                  - cell "Low" [ref=e1093]
+                  - cell "Outdated dependency detected" [ref=e1094]
+                  - cell "Code Scanner" [ref=e1095]
+                  - cell "Open" [ref=e1096]
+                  - cell "May 19, 11:03 PM" [ref=e1097]
+            - button "View all threats" [ref=e1098] [cursor=pointer]:
+              - generic [ref=e1099]: View all threats
+              - img [ref=e1100]
+          - generic [ref=e1102]:
+            - generic [ref=e1103]:
+              - heading "Security Timeline" [level=2] [ref=e1104]
+              - button "View all" [ref=e1105] [cursor=pointer]
+            - generic [ref=e1106]:
+              - generic [ref=e1107]:
+                - time [ref=e1108]: 10:24 AM
+                - img [ref=e1110]
+                - generic [ref=e1114]:
+                  - strong [ref=e1115]: New login from unknown device
+                  - generic [ref=e1116]: "User: alex.morgan@avraxe.com"
+              - generic [ref=e1117]:
+                - time [ref=e1118]: 9:41 AM
+                - img [ref=e1120]
+                - generic [ref=e1125]:
+                  - strong [ref=e1126]: Workflow "Vendor Onboarding" was modified
+                  - generic [ref=e1127]: "By: Hermes-7"
+              - generic [ref=e1128]:
+                - time [ref=e1129]: 8:15 AM
+                - img [ref=e1131]
+                - generic [ref=e1135]:
+                  - strong [ref=e1136]: Board vote completed on "Security Policy Update"
+                  - generic [ref=e1137]: "Result: Approved"
+              - generic [ref=e1138]:
+                - time [ref=e1139]: Yesterday
+                - img [ref=e1141]
+                - generic [ref=e1145]:
+                  - strong [ref=e1146]: New agent "Sentinel-2" was created
+                  - generic [ref=e1147]: "By: System"
+              - generic [ref=e1148]:
+                - time [ref=e1149]: Yesterday
+                - img [ref=e1151]
+                - generic [ref=e1157]:
+                  - strong [ref=e1158]: Organization chart updated
+                  - generic [ref=e1159]: "By: Ayesha Khan"
+              - generic [ref=e1160]:
+                - time [ref=e1161]: May 18
+                - img [ref=e1163]
+                - generic [ref=e1165]:
+                  - strong [ref=e1166]: Permission changes applied to 4 agents
+                  - generic [ref=e1167]: "By: System"
